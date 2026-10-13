@@ -22,6 +22,28 @@ function renderStats(){
   document.getElementById('hearts').textContent = state.hearts;
 }
 
+let tagalogVoice = null;
+function pickVoice(){
+  const voices = speechSynthesis.getVoices();
+  tagalogVoice = voices.find(v => /^fil(-|_|$)/i.test(v.lang)) ||
+                  voices.find(v => /^tl(-|_|$)/i.test(v.lang)) ||
+                  voices.find(v => /filipino|tagalog/i.test(v.name)) || null;
+}
+if ('speechSynthesis' in window) {
+  pickVoice();
+  speechSynthesis.onvoiceschanged = pickVoice;
+}
+
+function speak(text){
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = tagalogVoice?.lang || 'fil-PH';
+  if (tagalogVoice) utterance.voice = tagalogVoice;
+  utterance.rate = 0.85;
+  speechSynthesis.speak(utterance);
+}
+
 function home(){
   const done = Object.keys(state.completed).length;
   app.innerHTML = `
@@ -60,7 +82,11 @@ function renderExercise(){
       <div><strong>${current.icon} ${current.title}</strong> • Question ${index + 1}/${current.exercises.length}</div>
       <div class="prompt">${ex.prompt}</div>
       ${ex.type === 'choice'
-        ? `<div class="options">${ex.options.map((o, i) => `<button class="option" onclick="answerChoice(${i})">${o}</button>`).join('')}</div>`
+        ? `<div class="options">${ex.options.map((o, i) => `
+            <div class="option-row">
+              <button class="option" onclick="answerChoice(${i})">${o}</button>
+              <button class="speak-btn" title="Listen in Tagalog" onclick="event.stopPropagation(); speak('${o.replace(/'/g, "\\'")}')">🔊</button>
+            </div>`).join('')}</div>`
         : `<input id="answer" class="input" placeholder="Type your answer in Tagalog" autocomplete="off">
            <div class="actions"><button id="check" class="primary" onclick="answerTranslate()">Check</button></div>`}
       <div id="feedback" class="feedback"></div>
@@ -77,14 +103,16 @@ function normalize(s){
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-function showFeedback(good, message){
+function showFeedback(good, message, spoken){
   const box = document.getElementById('feedback');
   box.className = 'feedback ' + (good ? 'good' : 'bad');
-  box.textContent = message;
+  box.innerHTML = `${message} ${spoken ? `<button class="speak-btn inline" onclick="speak('${spoken.replace(/'/g, "\\'")}')">🔊 Listen</button>` : ''}`;
   document.getElementById('next').style.display = 'inline-block';
   document.querySelectorAll('.option').forEach(b => b.disabled = true);
+  document.querySelectorAll('.speak-btn:not(.inline)').forEach(b => b.disabled = true);
   const check = document.getElementById('check');
   if (check) check.disabled = true;
+  if (spoken) speak(spoken);
 }
 
 function answerChoice(i){
@@ -94,7 +122,7 @@ function answerChoice(i){
   buttons[ex.answer].classList.add('correct');
   if (!good) buttons[i].classList.add('wrong');
   if (good) correctCount++; else loseHeart();
-  showFeedback(good, good ? 'Magaling! Correct!' : `Correct answer: ${ex.options[ex.answer]}`);
+  showFeedback(good, good ? 'Magaling! Correct!' : `Correct answer: ${ex.options[ex.answer]}`, ex.options[ex.answer]);
 }
 
 function answerTranslate(){
@@ -102,7 +130,7 @@ function answerTranslate(){
   const value = normalize(document.getElementById('answer').value);
   const good = ex.answers.some(a => normalize(a) === value);
   if (good) correctCount++; else loseHeart();
-  showFeedback(good, good ? 'Tama! Correct!' : `Correct answer: ${ex.answers[0]}`);
+  showFeedback(good, good ? 'Tama! Correct!' : `Correct answer: ${ex.answers[0]}`, ex.answers[0]);
 }
 
 function loseHeart(){
