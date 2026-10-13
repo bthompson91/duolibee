@@ -6,10 +6,17 @@ A single-user, offline-first Tagalog learning web app with 60 lessons and Duolin
 
 - 60 lessons across 12 units
 - Multiple choice, typed translation, listening, sentence building, and matching exercises
-- Text-to-speech Tagalog pronunciation with automatic detection of Filipino/Tagalog device voices
-- Clear notice in Settings when no Tagalog voice is available, with fallback to the device’s default voice
+- Text-to-speech that prefers a detected Filipino/Tagalog device voice
+- A curated pronunciation fallback for devices without a Filipino/Tagalog voice
+- Voice status in Settings: native Tagalog speech or clearly labelled approximate fallback mode
 - Spaced-repetition Practice Hub
 - Crown levels for repeated lesson mastery
+
+## Pronunciation approach
+
+DUOLIBEE keeps standard Tagalog spelling on screen. When a device offers a Filipino or Tagalog system voice, the app sends the original Tagalog text directly to that voice.
+
+When no such voice is installed, the app uses the lexicon in `pronunciation.js` to send a separate plain-text fallback to the device's default voice. The fallback steers generic voices toward Tagalog vowel targets, stress, `ng` /ŋ/, and `mga` /mɐŋa/ for common lesson words and phrases. It is labelled approximate because browser text-to-speech engines vary and cannot guarantee native-quality Tagalog. Installing a Filipino voice in your device settings gives the best result.
 
 ## Personal progression
 
