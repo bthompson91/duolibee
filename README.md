@@ -18,6 +18,21 @@ A single-user, offline-first Tagalog learning web app with 60 lessons and Duolin
 - Achievements, personal weekly XP tracking, profile statistics, and confetti rewards
 - Dark mode, adjustable speech rate, sound effects, and progress reset
 
+## DUOLIBEE mascot assets
+
+The app uses six transparent mascot PNGs from `assets/`:
+
+| File | Used for |
+|---|---|
+| `assets/mascot-welcome.png` | Header, Learn hero, and profile |
+| `assets/mascot-reminder.png` | Daily-goal and streak prompts |
+| `assets/mascot-correct.png` | Correct-answer feedback |
+| `assets/mascot-keep-going.png` | Practice Hub encouragement |
+| `assets/mascot-celebration.png` | Session completion and achievements |
+| `assets/mascot-sad.png` | Incorrect-answer feedback |
+
+If an image cannot be loaded, DUOLIBEE shows a 🐝 fallback instead.
+
 ## Data and privacy
 
 DUOLIBEE is designed for one user. There are no accounts, social leaderboards, analytics, or external user data. All progress is saved locally on your phone or computer using browser `localStorage`.
@@ -34,4 +49,4 @@ Open http://localhost:8000.
 
 ## GitHub Pages
 
-The repository includes a GitHub Actions workflow that deploys the static site to Pages on every push to `main`.
+GitHub Pages publishes the static app directly from the `main` branch and `/ (root)` folder.
