@@ -1,6 +1,6 @@
 # DUOLIBEE 🐝🇵🇭
 
-A Duolingo-inspired, offline-first Tagalog learning web app with 60 lessons and a full progression system.
+A single-user, offline-first Tagalog learning web app with 60 lessons and Duolingo-style motivation.
 
 ## Learning features
 
@@ -10,17 +10,19 @@ A Duolingo-inspired, offline-first Tagalog learning web app with 60 lessons and 
 - Spaced-repetition Practice Hub
 - Crown levels for repeated lesson mastery
 
-## Progression
+## Personal progression
 
 - Daily XP goal and daily quests
 - Streaks, streak freezes, and automatic streak repair
 - Gems, hearts with timed regeneration, heart refills, and 2x XP boosts
-- Achievements, weekly league, profile statistics, and confetti rewards
+- Achievements, personal weekly XP tracking, profile statistics, and confetti rewards
 - Dark mode, adjustable speech rate, sound effects, and progress reset
 
-## Data
+## Data and privacy
 
-All progress is stored locally in the browser using `localStorage`. No account, backend, or external service is required.
+DUOLIBEE is designed for one user. There are no accounts, social leaderboards, analytics, or external user data. All progress is saved locally on your phone or computer using browser `localStorage`.
+
+For the most reliable phone experience, open the GitHub Pages site in Chrome or Safari and choose **Add to Home Screen**. Avoid clearing site data if you want to preserve your streak and progress.
 
 ## Development
 

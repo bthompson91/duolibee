@@ -212,13 +212,8 @@ function claimQuest(id, reward){
 
 function renderProfile(){
   const lessons = Object.keys(state.completed).length;
-  const week = state.weeklyXp[weekKey()] || 0;
-  const friends = [
-    { name: 'Mika 🐝', xp: Math.max(120, week + 80) },
-    { name: 'Carlo', xp: Math.max(90, week + 35) },
-    { name: 'You', xp: week },
-    { name: 'Ana', xp: Math.max(60, week - 10) }
-  ].sort((a, b) => b.xp - a.xp);
+  const weekXp = state.weeklyXp[weekKey()] || 0;
+  const goalPct = Math.min(100, Math.round(state.quests.xp / state.dailyGoal * 100));
   app.innerHTML = `
     <section class="card profile">
       <div class="avatar">🐝</div>
@@ -233,16 +228,24 @@ function renderProfile(){
       </div>
     </section>
     <section class="card">
+      <h2>📅 This Week</h2>
+      <p>Your personal progress for this week.</p>
+      <div class="stat-grid">
+        <div><strong>${weekXp}</strong><small>XP this week</small></div>
+        <div><strong>${state.quests.xp}/${state.dailyGoal}</strong><small>Today’s goal</small></div>
+        <div><strong>${state.streak}</strong><small>Current streak</small></div>
+        <div><strong>${lessons}</strong><small>Lessons started</small></div>
+      </div>
+      <div class="progress"><div style="width:${goalPct}%"></div></div>
+      <small>Daily goal progress</small>
+    </section>
+    <section class="card">
       <h2>🛒 Shop</h2>
       <div class="tile-grid">
         <button class="tile" onclick="buy('refill')"><span>❤️</span><strong>Refill Hearts</strong><small>💎350</small></button>
         <button class="tile" onclick="buy('freeze')"><span>🧊</span><strong>Streak Freeze</strong><small>💎200 • You have ${state.freezes}</small></button>
         <button class="tile" onclick="buy('boost')"><span>⚡</span><strong>XP Boost</strong><small>💎100 • 15 min 2x XP</small></button>
       </div>
-    </section>
-    <section class="card">
-      <h2>🥇 Weekly League</h2>
-      ${friends.map((f, i) => `<div class="leader ${f.name === 'You' ? 'you' : ''}"><span>${i + 1}.</span><strong>${f.name}</strong><span>${f.xp} XP</span></div>`).join('')}
     </section>`;
 }
 
