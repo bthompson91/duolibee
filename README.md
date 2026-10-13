@@ -6,7 +6,8 @@ A single-user, offline-first Tagalog learning web app with 60 lessons and Duolin
 
 - 60 lessons across 12 units
 - Multiple choice, typed translation, listening, sentence building, and matching exercises
-- Text-to-speech Tagalog pronunciation
+- Text-to-speech Tagalog pronunciation with automatic detection of Filipino/Tagalog device voices
+- Clear notice in Settings when no Tagalog voice is available, with fallback to the device’s default voice
 - Spaced-repetition Practice Hub
 - Crown levels for repeated lesson mastery
 
@@ -17,6 +18,12 @@ A single-user, offline-first Tagalog learning web app with 60 lessons and Duolin
 - Gems, hearts with timed regeneration, heart refills, and 2x XP boosts
 - Achievements, personal weekly XP tracking, profile statistics, and confetti rewards
 - Dark mode, adjustable speech rate, sound effects, and progress reset
+
+## Accessibility and readability
+
+- High-contrast dark-mode surfaces for lessons, answers, feedback, statistics, and toasts
+- Clear active-state highlighting for the Learn, Practice, Quests, Profile, and Settings tabs
+- Improved heading hierarchy, line height, card spacing, and prompt readability
 
 ## DUOLIBEE mascot assets
 
