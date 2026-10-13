@@ -8,18 +8,29 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="bee">🐝</span> DUOLIBEE</div>
+    <div class="brand" onclick="go('learn')"><span class="bee">🐝</span> DUOLIBEE</div>
     <div class="stats">
-      <div class="stat" title="Daily streak">🔥 <span id="streak">0</span></div>
-      <div class="stat" title="Total XP">⚡ <span id="xp">0</span></div>
-      <div class="stat" title="Hearts">❤️ <span id="hearts">3</span></div>
+      <button class="stat" onclick="go('profile')" title="Streak">🔥 <span id="streak">0</span></button>
+      <button class="stat" onclick="go('profile')" title="Gems">💎 <span id="gems">0</span></button>
+      <button class="stat" id="hearts-stat" onclick="go('profile')" title="Hearts">❤️ <span id="hearts">5</span></button>
+      <button class="stat" id="boost-stat" onclick="go('profile')" title="XP Boost" style="display:none">⚡ <span id="boost">2x</span></button>
     </div>
   </header>
 
-  <main id="app"></main>
+  <nav class="tabs">
+    <button id="tab-learn" class="tab active" onclick="go('learn')">🏠 Learn</button>
+    <button id="tab-practice" class="tab" onclick="go('practice')">🔁 Practice</button>
+    <button id="tab-quests" class="tab" onclick="go('quests')">🎯 Quests</button>
+    <button id="tab-profile" class="tab" onclick="go('profile')">👤 Profile</button>
+    <button id="tab-settings" class="tab" onclick="go('settings')">⚙️ Settings</button>
+  </nav>
 
-  <footer>Made for Tagalog learners • Progress is stored locally in your browser</footer>
+  <main id="app"></main>
+  <div id="confetti"></div>
+
+  <footer>DUOLIBEE • Learn Tagalog offline • Progress stays in this browser</footer>
   <script src="lessons.js"></script>
+  <script src="extra.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

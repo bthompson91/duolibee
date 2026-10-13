@@ -1,25 +1,35 @@
 # DUOLIBEE 🐝🇵🇭
 
-A playful, Duolingo-inspired web app for learning Tagalog, with 60 bite-sized lessons.
+A Duolingo-inspired, offline-first Tagalog learning web app with 60 lessons and a full progression system.
 
-## Features
+## Learning features
 
-- 60 lessons across 12 themed units
-- Multiple-choice and type-the-translation exercises
-- XP, daily streak tracking, hearts, and lesson completion
-- Progress saved in the browser with `localStorage`
-- No build step, backend, or dependencies
+- 60 lessons across 12 units
+- Multiple choice, typed translation, listening, sentence building, and matching exercises
+- Text-to-speech Tagalog pronunciation
+- Spaced-repetition Practice Hub
+- Crown levels for repeated lesson mastery
 
-## Run locally
+## Progression
 
-Open `index.html` in a browser, or serve the folder:
+- Daily XP goal and daily quests
+- Streaks, streak freezes, and automatic streak repair
+- Gems, hearts with timed regeneration, heart refills, and 2x XP boosts
+- Achievements, weekly league, profile statistics, and confetti rewards
+- Dark mode, adjustable speech rate, sound effects, and progress reset
+
+## Data
+
+All progress is stored locally in the browser using `localStorage`. No account, backend, or external service is required.
+
+## Development
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Then visit `http://localhost:8000`.
+Open http://localhost:8000.
 
 ## GitHub Pages
 
-The included GitHub Actions workflow deploys the static site to GitHub Pages. Enable **Settings → Pages → Build and deployment → Source: GitHub Actions** if Pages does not start automatically.
+The repository includes a GitHub Actions workflow that deploys the static site to Pages on every push to `main`.
