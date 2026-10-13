@@ -25,7 +25,21 @@
     <button id="tab-settings" class="tab" onclick="go('settings')">⚙️ Settings</button>
   </nav>
   <main id="app"></main><div id="confetti"></div>
-  <footer>DUOLIBEE v0.1 • Learn Tagalog offline • Progress stays in this browser</footer>
+  <footer>DUOLIBEE v0.2 • Learn Tagalog offline • Progress stays in this browser</footer>
   <script src="lessons.js"></script><script src="extra.js"></script><script src="pronunciation.js"></script><script src="app.js"></script>
+  <script>
+  setTimeout(function(){
+    var app=document.getElementById('app');
+    if(app && !app.innerHTML.trim()){
+      var missing=[];
+      if(typeof LESSONS==='undefined'||typeof UNITS==='undefined')missing.push('lessons.js');
+      if(typeof shuffle==='undefined'||typeof makeListening==='undefined')missing.push('extra.js');
+      if(typeof findTagalogVoice==='undefined'||typeof tagalogSpeechText==='undefined')missing.push('pronunciation.js');
+      if(typeof go==='undefined'||typeof renderLearn==='undefined')missing.push('app.js');
+      var detail=missing.length?('Missing or failed: '+missing.join(', ')):'A script error stopped DUOLIBEE before it could render.';
+      app.innerHTML='<section class="card"><h2>⚠️ DUOLIBEE could not start</h2><p>'+detail+'</p><p>Hard-refresh this page. If you added DUOLIBEE to your home screen, remove and re-add it to clear the older cached files.</p></section>';
+    }
+  },1500);
+  </script>
 </body>
 </html>
