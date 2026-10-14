@@ -1,12 +1,15 @@
 // DUOLIBEE — practice every completed item on demand
-(function () {
-  function startAllPractice() {
+function startAllPractice() {
+  try {
     const learned = Object.keys(state.srs)
       .filter(k => state.srs[k] && state.srs[k].streak > 0)
       .map(k => ({ key: k, item: ITEM_BY_KEY[k] }))
       .filter(x => x.item);
 
-    if (!learned.length) return;
+    if (!learned.length) {
+      alert('Finish a lesson first—then its words become available for practice.');
+      return;
+    }
 
     const picked = seededShuffle(learned, Date.now()).slice(0, 20);
     session = {
@@ -30,21 +33,24 @@
     index = 0;
     correct = 0;
     renderExercise();
+  } catch (e) {
+    console.error('DUOLIBEE practice-all error', e);
+    alert('Practice could not start: ' + e.message);
   }
+}
 
-  renderPractice = function () {
-    const box = inboxItems();
-    const learnedCount = Object.keys(state.srs).filter(k => state.srs[k] && state.srs[k].streak > 0).length;
-    app.innerHTML = `
-      <section class='card'>
-        <h2>🔁 Practice Hub</h2>
-        <p>${box.overdue.length} item(s) are due for review.</p>
-        <button class='primary' onclick='startReview()' ${box.overdue.length ? '' : 'disabled'}>Start review</button>
-        <button class='ghost' onclick='startAllPractice()' ${learnedCount ? '' : 'disabled'}>Practice all completed (${learnedCount})</button>
-        <p><small>Completed-item practice chooses up to 20 items you have already learned.</small></p>
-      </section>
-    `;
-  };
+renderPractice = function () {
+  const box = inboxItems();
+  const learnedCount = Object.keys(state.srs).filter(k => state.srs[k] && state.srs[k].streak > 0).length;
+  app.innerHTML = `
+    <section class='card'>
+      <h2>🔁 Practice Hub</h2>
+      <p>${box.overdue.length} item(s) are due for review.</p>
+      <button class='primary' onclick='startReview()' ${box.overdue.length ? '' : 'disabled'}>Start review</button>
+      <button class='ghost' onclick='startAllPractice()' ${learnedCount ? '' : 'disabled'}>Practice all completed (${learnedCount})</button>
+      <p><small>Completed-item practice chooses up to 20 items you have already learned.</small></p>
+    </section>
+  `;
+};
 
-  window.startAllPractice = startAllPractice;
-})();
+window.startAllPractice = startAllPractice;

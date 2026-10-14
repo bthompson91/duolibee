@@ -1,33 +1,57 @@
+// DUOLIBEE speech: reliable Filipino-first TTS with fallback diagnostics
 (() => {
-  function native(v) { return !!v && (/^(fil|tl|tgl)([-_]|$)/i.test(v.lang || '') || /filipino|tagalog/i.test(v.name || '')); }
-  function route() {
-    const list = speechSynthesis.getVoices();
-    const filipino = list.find(native);
-    if (filipino) return {voice:filipino, phonetic:false};
-    const selected = list.find(v => v.name === state.settings.voice);
-    const malay = list.find(v => /^ms([-_]|$)/i.test(v.lang || ''));
-    return {voice:selected || malay || list.find(v => v.default) || null, phonetic:true};
+  function isNative(v) {
+    return !!v && (/^(fil|tl|tgl)([-_]|$)/i.test(v.lang || '') || /filipino|tagalog/i.test(v.name || ''));
   }
-  speak = function(text, slow) {
-    if (!window.speechSynthesis) return alert('Device speech is unavailable.');
-    const r = route();
-    const input = r.phonetic && r.voice ? transliterateAbakada(String(text)) : String(text);
-    const u = new SpeechSynthesisUtterance(input);
-    if (r.voice) { u.voice = r.voice; u.lang = r.voice.lang; } else { u.lang = 'fil-PH'; }
-    u.rate = slow ? 0.62 : (Number(state.settings.rate) || 0.9);
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-    console.info('DUOLIBEE speech', {voice:r.voice ? r.voice.name : 'Browser fil-PH selection', language:u.lang, text:input});
-  };
-  const originalSettings = renderSettings;
-  renderSettings = function() {
-    originalSettings();
-    const p = document.createElement('p');
-    if (!window.speechSynthesis) p.textContent = 'Device speech is unavailable.';
-    else {
-      const r = route();
-      p.textContent = 'Active speech: ' + (r.voice ? r.voice.name + ' (' + r.voice.lang + ')' : 'Browser fil-PH selection') + '. Input: ' + (r.phonetic && r.voice ? 'Fallback phonetics; no Filipino voice detected.' : 'Original Tagalog, unchanged.') + ' Native Filipino voices always take priority over saved overrides.';
+
+  function pickVoice() {
+    const list = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+    return (
+      list.find(isNative) ||
+      list.find(v => v.name === state.settings.voice) ||
+      list.find(v => /^ms([-_]|$)/i.test(v.lang || '')) ||
+      list.find(v => v.default) ||
+      list[0] ||
+      null
+    );
+  }
+
+  speak = function (text, slow) {
+    if (!window.speechSynthesis) {
+      alert('Device speech is unavailable.');
+      return;
     }
-    app.prepend(p);
+
+    try {
+      const voice = pickVoice();
+      const usePhonetics = !voice || !isNative(voice);
+      const input = usePhonetics ? transliterateAbakada(String(text)) : String(text);
+      const utterance = new SpeechSynthesisUtterance(input);
+
+      if (voice) {
+        utterance.voice = voice;
+        utterance.lang = voice.lang;
+      } else {
+        utterance.lang = 'fil-PH';
+      }
+
+      utterance.rate = slow ? 0.62 : (Number(state.settings.rate) || 0.9);
+      utterance.onerror = event => console.error('DUOLIBEE speech error', event);
+
+      speechSynthesis.cancel();
+      setTimeout(() => speechSynthesis.speak(utterance), 60);
+
+      console.info('DUOLIBEE speech', {
+        voice: voice ? voice.name + ' (' + voice.lang + ')' : 'Browser fil-PH selection',
+        phonetics: usePhonetics,
+        text: input
+      });
+    } catch (e) {
+      console.error('DUOLIBEE speech failure', e);
+    }
   };
+
+  if (window.speechSynthesis) {
+    speechSynthesis.onvoiceschanged = () => console.info('DUOLIBEE voices', speechSynthesis.getVoices().map(v => v.name + ' / ' + v.lang));
+  }
 })();
