@@ -3,13 +3,13 @@
   function native(v){return /^(fil|tl|tgl)([-_]|$)/i.test(v.lang||'')||/filipino|tagalog/i.test(v.name||'');}
   function voice(){const list=speechSynthesis.getVoices();return list.find(native)||list.find(v=>v.name===state.settings.voice)||list.find(v=>/^ms([-_]|$)/i.test(v.lang||''))||list.find(v=>v.default)||list.find(v=>v.localService)||list[0]||null;}
   function status(message){let p=document.getElementById('speech-status');if(!p){p=document.createElement('p');p.id='speech-status';p.setAttribute('role','status');app.append(p);}p.textContent=message;}
-  speak=function(text,slow){
+  speak=function(text){
     if(!window.speechSynthesis){status('Device speech is unavailable. Use “I can’t hear this” to switch question type.');return;}
     const synth=speechSynthesis,id=++serial;clearTimeout(timer);
     if(synth.speaking||synth.pending)synth.cancel();
     synth.resume();const v=voice(),u=new SpeechSynthesisUtterance(String(text));current=u;
     if(v){u.voice=v;u.lang=v.lang;}
-    u.rate=slow?.62:(Number(state.settings.rate)||.9);
+    u.rate=Number(state.settings.rate)||.9;
     u.onstart=()=>{if(id!==serial)return;clearTimeout(timer);status('Playing: '+(v?v.name:'system default'));};
     u.onend=()=>{if(id!==serial)return;clearTimeout(timer);current=null;status('Playback complete.');};
     u.onerror=e=>{if(id!==serial)return;clearTimeout(timer);current=null;status('Speech error: '+e.error+'. Tap Play to retry, or use “I can’t hear this”.');};
@@ -18,6 +18,7 @@
   const settings=renderSettings;
   renderSettings=function(){settings();const p=document.createElement('p'),v=window.speechSynthesis?voice():null;p.textContent='Speech voice: '+(v?v.name+' ('+v.lang+')':'system default')+'. All voices receive original Tagalog unchanged.';app.prepend(p);const test=document.createElement('button');test.className='ghost';test.textContent='Test system voice';test.onclick=()=>{if(!window.speechSynthesis)return;serial++;clearTimeout(timer);speechSynthesis.cancel();speechSynthesis.resume();current=new SpeechSynthesisUtterance('Audio test.');current.onerror=e=>status('System voice error: '+e.error);speechSynthesis.speak(current);};app.append(test);};
   function addAudioHelp(){
+    app.querySelectorAll('button.slow,button[onclick="testVoice(true)"]').forEach(b=>b.remove());
     if(typeof session==='undefined'||!session||!session.exercises[index]||session.exercises[index].type!=='audio'||document.getElementById('audio-help'))return;
     const b=document.createElement('button');b.id='audio-help';b.className='ghost';b.textContent='I can’t hear this';b.onclick=()=>{
       const ex=session.exercises[index];if(ex.type!=='audio'||session._answeredIndex===index)return;
