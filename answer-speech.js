@@ -53,4 +53,17 @@
     originalCheckBuild();
     if (correct > correctBefore) speakAnswer(exercise.answer, true);
   };
+  const originalAddToken = addToken;
+  addToken = function(i) {
+    const position = session.built.indexOf(i);
+    if (position !== -1) {
+      session.built.splice(position, 1);
+    } else if (!session.built.includes(i)) {
+      session.built.push(i);
+    }
+    const built = document.getElementById('built');
+    if (built) {
+      built.textContent = session.built.map(tokenIndex => session.bank[tokenIndex]).join(' ');
+    }
+  };
 })();
