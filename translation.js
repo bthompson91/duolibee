@@ -1,12 +1,7 @@
 (() => {
   const ENDPOINT = 'https://158-179-30-201.sslip.io/duolibee/translate';
-  const CLIENT_ID = '953505436719-p73hfncc6p39481s6jaedj975l2a9rul.apps.googleusercontent.com';
   const CACHE_PREFIX = 'duolibee-translation-';
-  let idToken = '';
-  let idTokenExpires = 0;
   let pending = false;
-  let pendingResolve = null;
-  let pendingReject = null;
   let lastTranslatedKey = '';
 
   function area() {
@@ -23,9 +18,9 @@
     if (!el) return;
 
     const safeEnglish = String(english)
-      .split('&').join('&amp;')
-      .split('<').join('&lt;')
-      .split('>').join('&gt;');
+      .split('&').join('&')
+      .split('<').join('<')
+      .split('>').join('>');
 
     el.innerHTML = highlightMeaning(safeEnglish, meaning);
   }
@@ -46,65 +41,6 @@
     try {
       sessionStorage.setItem(cacheKey(sentence), english);
     } catch (e) {}
-  }
-
-  function handleCredentialResponse(response) {
-    const credential = response && response.credential;
-
-    if (!credential) {
-      if (pendingReject) pendingReject(new Error('Google did not return a sign-in token.'));
-      return;
-    }
-
-    idToken = credential;
-    idTokenExpires = Date.now() + 55 * 60 * 1000;
-
-    if (pendingResolve) pendingResolve(credential);
-  }
-
-  function requestIdToken() {
-    return new Promise((resolve, reject) => {
-      if (!window.google || !window.google.accounts || !window.google.accounts.id) {
-        reject(new Error('Google sign-in is still loading. Try again shortly.'));
-        return;
-      }
-
-      pendingResolve = resolve;
-      pendingReject = reject;
-
-      google.accounts.id.initialize({
-        client_id: CLIENT_ID,
-        callback: handleCredentialResponse
-      });
-
-      const buttonHost = document.getElementById('google-signin-button');
-      if (!buttonHost) {
-        reject(new Error('Google sign-in button is unavailable.'));
-        return;
-      }
-
-      buttonHost.innerHTML = '';
-      google.accounts.id.renderButton(buttonHost, {
-        type: 'standard',
-        theme: 'outline',
-        size: 'large',
-        text: 'signin_with',
-        shape: 'pill'
-      });
-
-      setTimeout(() => {
-        if (pendingReject === reject) {
-          pendingReject(new Error('Google sign-in prompt was dismissed or unavailable.'));
-          pendingResolve = null;
-          pendingReject = null;
-        }
-      }, 120000);
-    });
-  }
-
-  async function getIdToken() {
-    if (idToken && Date.now() < idTokenExpires) return idToken;
-    return requestIdToken();
   }
 
   function escapeRegExp(text) {
@@ -133,6 +69,13 @@
     return english;
   }
 
+  function sharedIdToken() {
+    if (typeof window.duolibeeGetTranslationIdToken === 'function') {
+      return window.duolibeeGetTranslationIdToken();
+    }
+    return '';
+  }
+
   async function translate(sentence) {
     const english = cachedTranslation(sentence);
     if (english) {
@@ -150,11 +93,16 @@
       return;
     }
 
+    const token = sharedIdToken();
+    if (!token) {
+      setStatus('Connect Google Drive in Settings to see English.');
+      return;
+    }
+
     pending = true;
     setStatus('Translating…');
 
     try {
-      const token = await getIdToken();
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20000);
 
@@ -176,9 +124,7 @@
       clearTimeout(timeout);
 
       if (response.status === 401) {
-        idToken = '';
-        idTokenExpires = 0;
-        setStatus('Sign in with Google to see English.');
+        setStatus('Reconnect Google Drive in Settings to see English.');
         return;
       }
 
@@ -216,8 +162,6 @@
       }
     } finally {
       pending = false;
-      pendingResolve = null;
-      pendingReject = null;
     }
   }
 
@@ -270,15 +214,6 @@
     if (cached) {
       setStatus(cached);
       return;
-    }
-
-    setStatus('Sign in with Google to see English.');
-
-    if (!document.getElementById('google-signin-button')) {
-      const buttonHost = document.createElement('div');
-      buttonHost.id = 'google-signin-button';
-      buttonHost.style.cssText = 'margin-top:8px;display:flex;justify-content:center';
-      area().after(buttonHost);
     }
 
     translate(answered.sentence);
