@@ -106,7 +106,7 @@
     if (idToken && Date.now() < idTokenExpires) return idToken;
     return requestIdToken();
   }
-  
+
   function escapeRegExp(text) {
     return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
@@ -114,13 +114,25 @@
   function highlightMeaning(english, meaning) {
     if (!english || !meaning) return english;
 
-    const primaryMeaning = String(meaning).split('/')[0].trim();
-    if (!primaryMeaning) return english;
+    const terms = String(meaning)
+      .split('/')
+      .map(term => term.trim())
+      .filter(Boolean);
 
-    const pattern = new RegExp('\\b(' + escapeRegExp(primaryMeaning) + ')\\b', 'i');
-    return english.replace(pattern, '<mark>$1</mark>');
+    for (const term of terms) {
+      const pattern = new RegExp(
+        '\\b(' + escapeRegExp(term) + ')(?:s|es|ies|ed|ing|d)?\\b',
+        'i'
+      );
+
+      if (pattern.test(english)) {
+        return english.replace(pattern, '<mark>$1</mark>');
+      }
+    }
+
+    return english;
   }
-  
+
   async function translate(sentence) {
     const english = cachedTranslation(sentence);
     if (english) {
