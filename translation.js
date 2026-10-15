@@ -7,6 +7,7 @@
   let pending = false;
   let pendingResolve = null;
   let pendingReject = null;
+  let lastTranslatedKey = '';
 
   function area() {
     return document.getElementById('translation-result');
@@ -163,10 +164,20 @@
     }
   }
 
-  function currentDailySentence() {
-    if (!state.dailyChallenge || !state.dailyChallenge.questions) return '';
-    const question = state.dailyChallenge.questions[state.dailyChallenge.answers.findIndex(a => a === null) - 1];
-    return question ? question.sentence : '';
+  function currentAnsweredChallenge() {
+    const challenge = state && state.dailyChallenge;
+    if (!challenge || !Array.isArray(challenge.questions) || !Array.isArray(challenge.answers)) return null;
+
+    let answeredIndex = -1;
+    for (let i = 0; i < challenge.answers.length; i++) {
+      if (challenge.answers[i] !== null) answeredIndex = i;
+    }
+
+    if (answeredIndex < 0) return null;
+    return {
+      index: answeredIndex,
+      sentence: challenge.questions[answeredIndex] && challenge.questions[answeredIndex].sentence
+    };
   }
 
   function addTranslationArea(card) {
@@ -181,31 +192,31 @@
     if (feedback) feedback.after(result); else card.append(result);
   }
 
-  const originalRenderQuestion = renderQuestion;
-  renderQuestion = function() {
-    originalRenderQuestion();
-
+  function handleDailyChallenge() {
     const card = app.querySelector('section.card');
-    if (!card) return;
+    if (!card || !card.querySelector('.feedback')) return;
 
-    const challenge = state.dailyChallenge;
-    if (!challenge || !challenge.questions) return;
+    const answered = currentAnsweredChallenge();
+    if (!answered || !answered.sentence) return;
 
-    const answeredIndex = challenge.answers.findIndex(answer => answer !== null);
-    if (answeredIndex < 0) return;
+    const key = cacheKey(answered.sentence);
+    if (lastTranslatedKey === key && area()) return;
 
-    const sentence = challenge.questions[answeredIndex].sentence;
-    if (!sentence) return;
-
+    lastTranslatedKey = key;
     addTranslationArea(card);
 
-    const cached = cachedTranslation(sentence);
+    const cached = cachedTranslation(answered.sentence);
     if (cached) {
       setStatus(cached);
       return;
     }
 
     setStatus('Sign in with Google to see English.');
-    translate(sentence);
-  };
+    translate(answered.sentence);
+  }
+
+  new MutationObserver(() => {
+    if (!view || view !== 'daily') return;
+    handleDailyChallenge();
+  }).observe(app, { childList: true, subtree: true });
 })();
