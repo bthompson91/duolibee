@@ -5,6 +5,8 @@
   let idToken = '';
   let idTokenExpires = 0;
   let pending = false;
+  let pendingResolve = null;
+  let pendingReject = null;
 
   function area() {
     return document.getElementById('translation-result');
@@ -33,31 +35,44 @@
     } catch (e) {}
   }
 
+  function handleCredentialResponse(response) {
+    const credential = response && response.credential;
+
+    if (!credential) {
+      if (pendingReject) pendingReject(new Error('Google did not return a sign-in token.'));
+      return;
+    }
+
+    idToken = credential;
+    idTokenExpires = Date.now() + 55 * 60 * 1000;
+
+    if (pendingResolve) pendingResolve(credential);
+  }
+
   function requestIdToken() {
     return new Promise((resolve, reject) => {
-      if (!window.google?.accounts?.oauth2) {
+      if (!window.google || !window.google.accounts || !window.google.accounts.id) {
         reject(new Error('Google sign-in is still loading. Try again shortly.'));
         return;
       }
 
-      google.accounts.oauth2.initTokenClient({
+      pendingResolve = resolve;
+      pendingReject = reject;
+
+      google.accounts.id.initialize({
         client_id: CLIENT_ID,
-        scope: 'openid',
-        callback: response => {
-          if (response.error) {
-            reject(new Error('Google sign-in was cancelled.'));
-            return;
-          }
-          if (!response.id_token) {
-            reject(new Error('Google did not return a sign-in token.'));
-            return;
-          }
-          idToken = response.id_token;
-          idTokenExpires = Date.now() + 55 * 60 * 1000;
-          resolve(idToken);
-        },
-        error_callback: () => reject(new Error('Google sign-in was cancelled or blocked.'))
-      }).requestAccessToken({ prompt: '' });
+        callback: handleCredentialResponse
+      });
+
+      google.accounts.id.prompt();
+
+      setTimeout(() => {
+        if (pendingReject === reject) {
+          pendingReject(new Error('Google sign-in prompt was dismissed or unavailable.'));
+          pendingResolve = null;
+          pendingReject = null;
+        }
+      }, 120000);
     });
   }
 
@@ -143,32 +158,46 @@
       }
     } finally {
       pending = false;
+      pendingResolve = null;
+      pendingReject = null;
     }
   }
 
-  function sentenceForExercise() {
-    if (!session || !session.exercises || !session.exercises[index]) return '';
-    const exercise = session.exercises[index];
-
-    if (exercise.type === 'choice' || exercise.type === 'audio') {
-      const item = exercise.item || (session.items && session.items[index]);
-      return item?.t || '';
-    }
-
-    if (exercise.type === 'translate') return exercise.item?.t || '';
-    if (exercise.type === 'match') return exercise.pairs?.[0]?.t || '';
-    if (exercise.type === 'build') return exercise.answer || '';
-    if (exercise.type === 'learn') return exercise.items?.[0]?.t || '';
-
-    return '';
+  function currentDailySentence() {
+    if (!state.dailyChallenge || !state.dailyChallenge.questions) return '';
+    const question = state.dailyChallenge.questions[state.dailyChallenge.answers.findIndex(a => a === null) - 1];
+    return question ? question.sentence : '';
   }
 
-  const originalFeedback = feedback;
-  feedback = function(ok, message) {
-    originalFeedback(ok, message);
+  function addTranslationArea(card) {
+    if (!card || document.getElementById('translation-result')) return;
 
-    const sentence = sentenceForExercise();
+    const result = document.createElement('div');
+    result.id = 'translation-result';
+    result.className = 'translation-result';
+    result.setAttribute('role', 'status');
+
+    const feedback = card.querySelector('.feedback');
+    if (feedback) feedback.after(result); else card.append(result);
+  }
+
+  const originalRenderQuestion = renderQuestion;
+  renderQuestion = function() {
+    originalRenderQuestion();
+
+    const card = app.querySelector('section.card');
+    if (!card) return;
+
+    const challenge = state.dailyChallenge;
+    if (!challenge || !challenge.questions) return;
+
+    const answeredIndex = challenge.answers.findIndex(answer => answer !== null);
+    if (answeredIndex < 0) return;
+
+    const sentence = challenge.questions[answeredIndex].sentence;
     if (!sentence) return;
+
+    addTranslationArea(card);
 
     const cached = cachedTranslation(sentence);
     if (cached) {
@@ -178,21 +207,5 @@
 
     setStatus('Sign in with Google to see English.');
     translate(sentence);
-  };
-
-  const originalRender = renderExercise;
-  renderExercise = function() {
-    originalRender();
-    const card = app.querySelector('section.card');
-    if (!card || document.getElementById('translation-result')) return;
-
-    const result = document.createElement('div');
-    result.id = 'translation-result';
-    result.className = 'translation-result';
-    result.setAttribute('role', 'status');
-    result.style.cssText = 'margin-top:10px;font-size:14px;opacity:.8;min-height:18px';
-
-    const feedback = document.getElementById('feedback');
-    if (feedback) feedback.after(result); else card.append(result);
   };
 })();
