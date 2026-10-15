@@ -1,66 +1,80 @@
 # DUOLIBEE 🐝🇵🇭
 
-A single-user, offline-first Tagalog learning web app with 60 lessons and Duolingo-style motivation.
+DUOLIBEE is a playful, Duolingo-inspired Tagalog learning web app. It works entirely in the browser, saves progress locally, and can optionally back up progress to a private Google Drive app-data folder.
 
-## Learning features
+## Highlights
 
 - 60 lessons across 12 units
-- Multiple choice, typed translation, listening, sentence building, and matching exercises
-- Text-to-speech that prefers a detected Filipino/Tagalog device voice
-- A curated pronunciation fallback for devices without a Filipino/Tagalog voice
-- Voice status in Settings: native Tagalog speech or clearly labelled approximate fallback mode
-- Spaced-repetition Practice Hub
-- Crown levels for repeated lesson mastery
-
-## Pronunciation approach
-
-DUOLIBEE keeps standard Tagalog spelling on screen. When a device offers a Filipino or Tagalog system voice, the app sends the original Tagalog text directly to that voice.
-
-When no such voice is installed, the app uses the lexicon in `pronunciation.js` to send a separate plain-text fallback to the device's default voice. The fallback steers generic voices toward Tagalog vowel targets, stress, `ng` /ŋ/, and `mga` /mɐŋa/ for common lesson words and phrases. It is labelled approximate because browser text-to-speech engines vary and cannot guarantee native-quality Tagalog. Installing a Filipino voice in your device settings gives the best result.
-
-## Personal progression
-
-- Daily XP goal and daily quests
-- Streaks, streak freezes, and automatic streak repair
-- Gems, hearts with timed regeneration, heart refills, and 2x XP boosts
-- Achievements, personal weekly XP tracking, profile statistics, and confetti rewards
+- Multiple-choice, typed translation, listening, sentence-building, and matching exercises
+- Spaced-repetition Practice Hub and crown levels for repeated mastery
+- Daily XP goal, quests, streaks, streak freezes, automatic streak repair, gems, hearts, and XP boosts
+- Achievements, weekly XP tracking, profile statistics, and confetti rewards
 - Dark mode, adjustable speech rate, sound effects, and progress reset
+- Mobile-friendly design; installable from Chrome or Safari via **Add to Home Screen**
 
-## Accessibility and readability
+## Learning and pronunciation
 
-- High-contrast dark-mode surfaces for lessons, answers, feedback, statistics, and toasts
-- Clear active-state highlighting for the Learn, Practice, Quests, Profile, and Settings tabs
-- Improved heading hierarchy, line height, card spacing, and prompt readability
+DUOLIBEE uses five exercise types: multiple choice, typed translation, listening, sentence building, and matching. Lessons are stored as static JSON data, so the app runs without a backend.
 
-## DUOLIBEE mascot assets
+For audio, DUOLIBEE prefers a Filipino or Tagalog system text-to-speech voice. If one is unavailable, it uses a pronunciation fallback in `pronunciation.js` to guide a generic voice toward Tagalog vowel targets, stress, `ng`, and `mga`. The app clearly identifies when it is using approximate pronunciation rather than a native Tagalog voice.
 
-The app uses six transparent mascot PNGs from `assets/`:
+## Progress sync
 
-| File | Used for |
+Progress is always saved locally in browser `localStorage`. Users can optionally connect Google Drive to create a private backup in the app’s Drive app-data folder.
+
+Cloud sync includes:
+
+- Automatic sync after progress changes, when online
+- Manual **Sync now** control
+- Restore from Google Drive when starting on another device
+- Conflict handling when local and cloud progress differ
+- A local backup before restoring cloud progress
+- Resume support for an unfinished lesson
+- Offline operation: local saving continues if Google Drive is unavailable
+
+The app requests only the Google Drive app-data scope, so it cannot browse or modify the rest of a user’s Drive files.
+
+## Accessibility and interface
+
+The interface includes high-contrast dark-mode surfaces, clear tab highlighting, readable headings and spacing, and accessible feedback for lessons, answers, statistics, and toasts. The bee mascot provides visual encouragement across the Learn, Practice, Quests, Profile, and Settings views.
+
+## Project structure
+
+| File / folder | Purpose |
 |---|---|
-| `assets/mascot-welcome.png` | Header, Learn hero, and profile |
-| `assets/mascot-reminder.png` | Daily-goal and streak prompts |
-| `assets/mascot-correct.png` | Correct-answer feedback |
-| `assets/mascot-keep-going.png` | Practice Hub encouragement |
-| `assets/mascot-celebration.png` | Session completion and achievements |
-| `assets/mascot-sad.png` | Incorrect-answer feedback |
+| `index.html` | App shell and main interface |
+| `app.js` | Core learning app, state, navigation, and UI |
+| `learning-flow.js` | Lesson flow and exercise sequencing |
+| `daily-progress.js` | Daily goals, quests, streaks, and progression |
+| `lesson-retries.js` | Lesson retry behaviour |
+| `pronunciation.js` | Tagalog pronunciation fallback |
+| `speech-routing.js` | Text-to-speech voice selection and routing |
+| `translation.js` | Translation support |
+| `cloud-save.js` | Local storage and optional Google Drive sync |
+| `category-generator.js` | Lesson/category generation tooling |
+| `classic-rhymes.js` | Rhyme-based learning content |
+| `data/lessons.json` | Lesson content |
+| `data/rhymes.json` | Rhyme data |
+| `assets/` | Transparent mascot images |
 
-If an image cannot be loaded, DUOLIBEE shows a 🐝 fallback instead.
+## Run locally
 
-## Data and privacy
-
-DUOLIBEE is designed for one user. There are no accounts, social leaderboards, analytics, or external user data. All progress is saved locally on your phone or computer using browser `localStorage`.
-
-For the most reliable phone experience, open the GitHub Pages site in Chrome or Safari and choose **Add to Home Screen**. Avoid clearing site data if you want to preserve your streak and progress.
-
-## Development
+DUOLIBEE is a static web app; no build step or package installation is required.
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Open http://localhost:8000.
+Then open:
+
+```text
+http://localhost:8000
+```
 
 ## GitHub Pages
 
-GitHub Pages publishes the static app directly from the `main` branch and `/ (root)` folder.
+GitHub Pages publishes the app directly from the `main` branch, using the repository root as the site root.
+
+## Privacy
+
+DUOLIBEE is designed for one user. It has no accounts, social leaderboards, analytics, or external user-data collection. Progress remains in browser storage unless the user explicitly connects Google Drive for private cloud backup.
