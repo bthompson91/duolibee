@@ -46,4 +46,11 @@
     const tagalog = button.classList.contains('token') || isTagalogText(text);
     speakAnswer(text, tagalog);
   }, true);
+  const originalCheckBuild = checkBuild;
+  checkBuild = function() {
+    const exercise = session.exercises[index];
+    const correctBefore = correct;
+    originalCheckBuild();
+    if (correct > correctBefore) speakAnswer(exercise.answer, true);
+  };
 })();
