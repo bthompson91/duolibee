@@ -1,4 +1,4 @@
-// Pronunciation helpers: visible Abakada guide remains available; speech uses original Tagalog text with tso → cho and standalone ng → nung.
+// Pronunciation helpers: visible Abakada guide remains available; speech uses original Tagalog text with mga → manga, tso → cho, standalone ng → nung, and dy → j.
 const ABAKADA_VOWELS={"a":"ah","e":"eh","i":"ee","o":"oh","u":"oo"};
 const ABAKADA_ONSETS=["","b","k","d","g","h","l","m","n","ng","p","r","s","t","w","y","ch","sh","j"];
 const ABAKADA_SYLLABLES={};
@@ -8,5 +8,5 @@ function applyLoanwordRules(word){return word.replace(/c(?=[ei])/g,'s').replace(
 function transliterateAbakadaWord(word){const lower=word.toLowerCase();if(ABAKADA_WORD_EXCEPTIONS[lower])return ABAKADA_WORD_EXCEPTIONS[lower];const w=applyLoanwordRules(lower);const onsets=['ng','ch','sh','b','k','d','g','h','l','m','n','p','r','s','t','w','y','j'];const out=[];let i=0;while(i<w.length){let matched=false;for(const onset of onsets){if(w.startsWith(onset,i)){const vowel=w[i+onset.length];if(ABAKADA_SYLLABLES[onset+vowel]){out.push(ABAKADA_SYLLABLES[onset+vowel]);i+=onset.length+1;matched=true;break}}}if(matched)continue;if(ABAKADA_SYLLABLES[w[i]]){out.push(ABAKADA_SYLLABLES[w[i]]);i++;continue}out.push(w[i]);i++}return out.join('-')}
 function transliterateAbakada(text){return String(text).toLowerCase().replace(/[a-zñ]+/gi,match=>transliterateAbakadaWord(match)).replace(/\s+/g,' ').replace(/\s+([,!.?])/g,'$1').trim()}
 function findTagalogVoice(voices=[]){return voices.find(voice=>/^fil(?:-|_|$)/i.test(voice.lang))||voices.find(voice=>/^tl(?:-|_|$)/i.test(voice.lang))||voices.find(voice=>/filipino|tagalog/i.test(voice.name))||null}
-function tagalogSpeechText(text){return String(text).replace(/tso/gi,'cho').replace(/\bng\b/gi,'nung')}
+function tagalogSpeechText(text){return String(text).replace(/\bmga\b/gi,'manga').replace(/tso/gi,'cho').replace(/\bng\b/gi,'nung').replace(/dy/gi,'j')}
 function pronunciationDetails(text){return{guide:transliterateAbakada(text),fallback:transliterateAbakada(text)}}
