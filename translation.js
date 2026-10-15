@@ -65,7 +65,20 @@
         callback: handleCredentialResponse
       });
 
-      google.accounts.id.prompt();
+      const buttonHost = document.getElementById('google-signin-button');
+      if (!buttonHost) {
+        reject(new Error('Google sign-in button is unavailable.'));
+        return;
+      }
+
+      buttonHost.innerHTML = '';
+      google.accounts.id.renderButton(buttonHost, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'pill'
+      });
 
       setTimeout(() => {
         if (pendingReject === reject) {
@@ -212,6 +225,14 @@
     }
 
     setStatus('Sign in with Google to see English.');
+
+    if (!document.getElementById('google-signin-button')) {
+      const buttonHost = document.createElement('div');
+      buttonHost.id = 'google-signin-button';
+      buttonHost.style.cssText = 'margin-top:8px;display:flex;justify-content:center';
+      area().after(buttonHost);
+    }
+
     translate(answered.sentence);
   }
 
