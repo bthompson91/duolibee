@@ -69,13 +69,6 @@
     return english;
   }
 
-  function sharedIdToken() {
-    if (typeof window.duolibeeGetTranslationIdToken === 'function') {
-      return window.duolibeeGetTranslationIdToken();
-    }
-    return '';
-  }
-
   async function translate(sentence) {
     const english = cachedTranslation(sentence);
     if (english) {
@@ -93,12 +86,6 @@
       return;
     }
 
-    const token = sharedIdToken();
-    if (!token) {
-      setStatus('Connect Google Drive in Settings to see English.');
-      return;
-    }
-
     pending = true;
     setStatus('Translating…');
 
@@ -109,8 +96,7 @@
       const response = await fetch(ENDPOINT, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           q: sentence,
@@ -123,13 +109,8 @@
 
       clearTimeout(timeout);
 
-      if (response.status === 401) {
-        setStatus('Reconnect Google Drive in Settings to see English.');
-        return;
-      }
-
       if (response.status === 429) {
-        setStatus('Daily translation limit reached. Resets at midnight UTC.');
+        setStatus('Too many translations right now. Try again shortly.');
         return;
       }
 
