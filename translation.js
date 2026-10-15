@@ -18,6 +18,18 @@
     if (el) el.textContent = text;
   }
 
+  function setHighlightedStatus(english, meaning) {
+    const el = area();
+    if (!el) return;
+
+    const safeEnglish = String(english)
+      .split('&').join('&amp;')
+      .split('<').join('&lt;')
+      .split('>').join('&gt;');
+
+    el.innerHTML = highlightMeaning(safeEnglish, meaning);
+  }
+
   function cacheKey(sentence) {
     return CACHE_PREFIX + sentence;
   }
@@ -94,7 +106,21 @@
     if (idToken && Date.now() < idTokenExpires) return idToken;
     return requestIdToken();
   }
+  
+  function escapeRegExp(text) {
+    return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
 
+  function highlightMeaning(english, meaning) {
+    if (!english || !meaning) return english;
+
+    const primaryMeaning = String(meaning).split('/')[0].trim();
+    if (!primaryMeaning) return english;
+
+    const pattern = new RegExp('\\b(' + escapeRegExp(primaryMeaning) + ')\\b', 'i');
+    return english.replace(pattern, '<mark>$1</mark>');
+  }
+  
   async function translate(sentence) {
     const english = cachedTranslation(sentence);
     if (english) {
@@ -163,7 +189,13 @@
       }
 
       storeTranslation(sentence, result);
-      setStatus(result);
+
+      const answered = currentAnsweredChallenge();
+      if (answered && answered.sentence === sentence) {
+        setHighlightedStatus(result, answered.meaning);
+      } else {
+        setStatus(result);
+      }
     } catch (error) {
       if (error.name === 'AbortError') {
         setStatus('Translation request timed out.');
@@ -187,9 +219,13 @@
     }
 
     if (answeredIndex < 0) return null;
+    const question = challenge.questions[answeredIndex];
+
     return {
       index: answeredIndex,
-      sentence: challenge.questions[answeredIndex] && challenge.questions[answeredIndex].sentence
+      sentence: question && question.sentence,
+      word: question && question.word,
+      meaning: question && question.meaning
     };
   }
 
