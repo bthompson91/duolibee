@@ -15,9 +15,9 @@
       else topbar.appendChild(button);
       button.onclick = toggleMute;
     }
-    const label = muted() ? '🔇 Muted' : '🔊 Sound';
+    const icon = muted() ? '🔇' : '🔊';
     const title = muted() ? 'Turn sound on' : 'Mute all pronunciation';
-    if (button.textContent !== label) button.textContent = label;
+    if (button.textContent !== icon) button.textContent = icon;
     if (button.title !== title) button.title = title;
   }
   function toggleMute() {

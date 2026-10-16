@@ -1,22 +1,27 @@
 (() => {
   const RELEASE_NOTES = [
     {
+      version: 'v0.8.0',
+      items: [
+        'Removed the Learning Inbox.',
+        'Practice everything uses unlocked vocabulary from completed lessons, the current lesson, and Daily Challenge words.',
+        'Review uses only unlocked vocabulary that is due.',
+        'Compact top-bar controls: 🔊/🔇 for sound and ⏰ plus a count for due reviews.'
+      ]
+    },
+    {
+      version: 'v0.7.9',
+      items: [
+        'Fixed the mute-button render loop that could blank the app.',
+        'Made the mute button persist across screen updates.'
+      ]
+    },
+    {
       version: 'v0.7.7',
       items: [
         'Added a global mute button in the top bar.',
         'While muted, audio-recognition questions become text multiple-choice questions.',
-        'Mute now silences speaker buttons, tapped answers, and sentence playback.',
         'Added release notes to Settings.'
-      ]
-    },
-    {
-      version: 'v0.7.6',
-      items: [
-        'Sentence-builder words can be tapped again to remove them.',
-        'Wrong sentence builds can be edited and resubmitted.',
-        'Correct sentence builds speak the complete Tagalog sentence.',
-        'Answer choices, matching pairs, and word tokens are spoken when tapped.',
-        'Speech uses original Tagalog text, with mga → manga, tso → cho, standalone ng → nung, and dy → j.'
       ]
     }
   ];
