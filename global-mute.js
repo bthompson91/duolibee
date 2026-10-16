@@ -15,8 +15,10 @@
       else topbar.appendChild(button);
       button.onclick = toggleMute;
     }
-    button.textContent = muted() ? '🔇 Muted' : '🔊 Sound';
-    button.title = muted() ? 'Turn sound on' : 'Mute all pronunciation';
+    const label = muted() ? '🔇 Muted' : '🔊 Sound';
+    const title = muted() ? 'Turn sound on' : 'Mute all pronunciation';
+    if (button.textContent !== label) button.textContent = label;
+    if (button.title !== title) button.title = title;
   }
   function toggleMute() {
     state.settings.muted = !muted();
@@ -45,5 +47,7 @@
     originalRenderExercise();
   };
   renderMuteButton();
-  new MutationObserver(renderMuteButton).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(() => {
+    if (!document.getElementById('global-mute')) renderMuteButton();
+  }).observe(document.body, { childList: true, subtree: true });
 })();
