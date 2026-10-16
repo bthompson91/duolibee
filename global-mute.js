@@ -3,16 +3,14 @@
     return !!(state.settings && state.settings.muted);
   }
   function renderMuteButton() {
-    const topbar = document.querySelector('.topbar');
-    if (!topbar) return;
+    const stats = document.querySelector('.topbar .stats');
+    if (!stats) return;
     let button = document.getElementById('global-mute');
     if (!button) {
       button = document.createElement('button');
       button.id = 'global-mute';
       button.className = 'stat';
-      const stats = topbar.querySelector('.stats');
-      if (stats) topbar.insertBefore(button, stats);
-      else topbar.appendChild(button);
+      stats.appendChild(button);
       button.onclick = toggleMute;
     }
     const icon = muted() ? '🔇' : '🔊';
