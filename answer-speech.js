@@ -17,6 +17,7 @@
   }
   function speakAnswer(text, tagalog) {
     if (!window.speechSynthesis || !text) return;
+    if (state.settings && state.settings.muted) return;
     try {
       speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
