@@ -10,7 +10,9 @@
       button = document.createElement('button');
       button.id = 'global-mute';
       button.className = 'stat';
-      stats.appendChild(button);
+      const reviewButton = stats.querySelector('button');
+      if (reviewButton) stats.insertBefore(button, reviewButton);
+      else stats.appendChild(button);
       button.onclick = toggleMute;
     }
     const icon = muted() ? '🔇' : '🔊';
