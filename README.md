@@ -7,8 +7,8 @@ DUOLIBEE is a playful, Duolingo-inspired Tagalog learning web app. It works enti
 - 60 lessons across 12 units
 - Multiple-choice, typed translation, listening, sentence-building, and matching exercises
 - Spaced-repetition Practice Hub and crown levels for repeated mastery
-- Daily XP goal, quests, streaks, streak freezes, automatic streak repair, gems, hearts, and XP boosts
-- Achievements, weekly XP tracking, profile statistics, and confetti rewards
+- Daily goals, quests, streaks, streak freezes, automatic streak repair, gems, and hearts
+- Achievements, profile statistics, and confetti rewards
 - Dark mode, adjustable speech rate, sound effects, and progress reset
 - Mobile-friendly design; installable from Chrome or Safari via **Add to Home Screen**
 
