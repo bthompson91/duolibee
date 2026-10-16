@@ -45,4 +45,5 @@
     originalRenderExercise();
   };
   renderMuteButton();
+  new MutationObserver(renderMuteButton).observe(document.body, { childList: true, subtree: true });
 })();
