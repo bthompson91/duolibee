@@ -1,0 +1,159 @@
+{
+  "total": 100,
+  "themes": [
+    {
+      "name": "Ceremony People & Roles",
+      "icon": "👰",
+      "items": [
+        {"t": "asawa", "e": "spouse / husband or wife", "g": "Possessive: asawa ko = my spouse.", "s": "Siya ang asawa ko.", "se": "He or she is my spouse."},
+        {"t": "lalaki", "e": "man", "g": "Use si before names: si Juan.", "s": "Lalaki ang nobyo.", "se": "The groom is a man."},
+        {"t": "babae", "e": "woman", "g": "Ang marks the focused person.", "s": "Babae ang nobya.", "se": "The bride is a woman."},
+        {"t": "nobyo", "e": "groom", "g": "Spanish loanword; no plural ending needed.", "s": "Handa na ang nobyo.", "se": "The groom is ready."},
+        {"t": "nobya", "e": "bride", "g": "Maganda becomes magandang before nobya.", "s": "Magandang nobya si Maria.", "se": "Maria is a beautiful bride."},
+        {"t": "magulang", "e": "parent", "g": "Mga makes it plural: mga magulang.", "s": "Nandito ang mga magulang.", "se": "The parents are here."},
+        {"t": "tatay", "e": "father", "g": "Possessive: tatay ko = my father.", "s": "Proud ang tatay ng nobya.", "se": "The bride’s father is proud."},
+        {"t": "nanay", "e": "mother", "g": "Possessive: nanay ko = my mother.", "s": "Umiyak ang nanay.", "se": "The mother cried."},
+        {"t": "pari", "e": "priest", "g": "Use ang pari for the priest as focus.", "s": "Ang pari ang mag-oofficiate.", "se": "The priest will officiate."},
+        {"t": "pastor", "e": "pastor", "g": "Same word in many church contexts.", "s": "Nagsalita ang pastor.", "se": "The pastor spoke."},
+        {"t": "saksi", "e": "witness", "g": "Mga saksi = witnesses.", "s": "Mga saksi kami.", "se": "We are witnesses."},
+        {"t": "bisita", "e": "guest", "g": "Mga bisita = guests.", "s": "Daming bisita.", "se": "There are many guests."}
+      ]
+    },
+    {
+      "name": "Marriage & Covenant",
+      "icon": "💍",
+      "items": [
+        {"t": "kasal", "e": "marriage / wedding", "g": "Kasal is the root; verbs add affixes.", "s": "Ang kasal ay ngayon.", "se": "The wedding is today."},
+        {"t": "kasalan", "e": "wedding celebration", "g": "-an can mean place/event associated with root.", "s": "Sa kasalan tayo.", "se": "We are at the wedding celebration."},
+        {"t": "seremonya", "e": "ceremony", "g": "Spanish loanword; use sa for location.", "s": "Sa simbahan ang seremonya.", "se": "The ceremony is at the church."},
+        {"t": "simbahan", "e": "church", "g": "sa simbahan = at church.", "s": "Nasa simbahan sila.", "se": "They are at the church."},
+        {"t": "altar", "e": "altar", "g": "sa harap ng altar = in front of the altar.", "s": "Sa harap ng altar sila.", "se": "They are in front of the altar."},
+        {"t": "sumpaan", "e": "vow / oath", "g": "Root sumpa + -an.", "s": "Ang sumpaan ay mahalaga.", "se": "The vow is important."},
+        {"t": "panata", "e": "vow / sacred promise", "g": "Often religious devotion or pledge.", "s": "Ito ay panata.", "se": "This is a sacred promise."},
+        {"t": "tipan", "e": "covenant", "g": "Common in Bible language.", "s": "Ang tipan ay panghabambuhay.", "se": "The covenant is lifelong."},
+        {"t": "pangako", "e": "promise", "g": "Verb: nangako = promised.", "s": "May pangako sila.", "se": "They have a promise."},
+        {"t": "bagong kasal", "e": "newlywed", "g": "bago + linker -ng.", "s": "Bagong kasal sila.", "se": "They are newlyweds."},
+        {"t": "mag-asawa", "e": "married couple", "g": "mag- pair marker.", "s": "Masaya ang mag-asawa.", "se": "The married couple is happy."},
+        {"t": "biyuda", "e": "widow / widower", "g": "Gender often understood from context.", "s": "Biyuda siya.", "se": "He or she is a widow/widower."}
+      ]
+    },
+    {
+      "name": "Love, Vows & Promises",
+      "icon": "❤️",
+      "items": [
+        {"t": "pag-ibig", "e": "love", "g": "Noun form; mahal is the common verb/adjective root.", "s": "Mahalaga ang pag-ibig.", "se": "Love is important."},
+        {"t": "pagmamahal", "e": "love / affection", "g": "Noun built from mahal.", "s": "May pagmamahal sila.", "se": "They have love for each other."},
+        {"t": "mahal", "e": "love / dear / expensive", "g": "Meaning depends on sentence.", "s": "Mahal ko siya.", "se": "I love him or her."},
+        {"t": "minamahal", "e": "beloved / being loved", "g": "Object-focus ongoing form of mahal.", "s": "Minamahal ko siya.", "se": "I love him or her."},
+        {"t": "tapat", "e": "faithful", "g": "Adjective; matapat = faithful person.", "s": "Tapat siya.", "se": "He or she is faithful."},
+        {"t": "matapat", "e": "faithful / honest", "g": "ma- often makes an adjective.", "s": "Matapat na asawa.", "se": "A faithful spouse."},
+        {"t": "puso", "e": "heart", "g": "Possessive: puso ko = my heart.", "s": "Nasa puso ko siya.", "se": "He or she is in my heart."},
+        {"t": "kaluluwa", "e": "soul", "g": "Common in biblical readings.", "s": "Kaluluwa ko.", "se": "My soul."},
+        {"t": "buhay", "e": "life / alive", "g": "Also means alive.", "s": "Buhay na buhay.", "se": "Very much alive."},
+        {"t": "pamilya", "e": "family", "g": "pamilya ko = my family.", "s": "Mahal ko ang pamilya ko.", "se": "I love my family."},
+        {"t": "suporta", "e": "support", "g": "Nagbibigay ng suporta = gives support.", "s": "May suporta kami.", "se": "We have support."},
+        {"t": "pagtitiwala", "e": "trust", "g": "Noun from tiwala.", "s": "Mahalaga ang pagtitiwala.", "se": "Trust is important."}
+      ]
+    },
+    {
+      "name": "Wedding Verbs: mag-/nag-",
+      "icon": "动词",
+      "items": [
+        {"t": "magpakasal", "e": "to get married", "g": "Actor focus; the doer is the focus.", "s": "Gusto nilang magpakasal.", "se": "They want to get married."},
+        {"t": "nagpakasal", "e": "got married", "g": "Completed mag- verb: mag- becomes nag-.", "s": "Nagpakasal sila.", "se": "They got married."},
+        {"t": "nagpapakasal", "e": "is/are getting married", "g": "Ongoing: nag- + repeat first syllable.", "s": "Nagpapakasal sila ngayon.", "se": "They are getting married now."},
+        {"t": "magpapakasal", "e": "will get married", "g": "Future: mag- + repeat first syllable.", "s": "Magpapakasal sila bukas.", "se": "They will get married tomorrow."},
+        {"t": "ikasal", "e": "to be married (formal)", "g": "Formal/object-oriented form.", "s": "Ikinasal sila.", "se": "They were married."},
+        {"t": "ikinasal", "e": "was/were married", "g": "Completed form of ikasal.", "s": "Ikinasal sila sa simbahan.", "se": "They were married at the church."},
+        {"t": "magmahal", "e": "to love", "g": "Actor focus.", "s": "Mahalin mo ang magulang mo.", "se": "Love your parents."},
+        {"t": "nagmahal", "e": "loved", "g": "Completed actor-focus form.", "s": "Nagmahal sila.", "se": "They loved."},
+        {"t": "nagmamahalan", "e": "love each other", "g": "Reciprocal: mag- + -an.", "s": "Nagmamahalan sila.", "se": "They love each other."},
+        {"t": "magsumpaan", "e": "to make a vow", "g": "mag- + sumpa + -an.", "s": "Magsumpaan sila.", "se": "They will make vows."},
+        {"t": "nangako", "e": "promised", "g": "Completed form of pangako.", "s": "Nangako siya.", "se": "He or she promised."},
+        {"t": "nagsasama", "e": "are together / live together", "g": "Ongoing actor focus from sama.", "s": "Nagsasama sila.", "se": "They are together."}
+      ]
+    },
+    {
+      "name": "Object Focus: -in/-hin",
+      "icon": "🎯",
+      "items": [
+        {"t": "pakasalan", "e": "to marry someone", "g": "Object focus: the person married is the focus.", "s": "Pakasalan mo siya.", "se": "Marry him or her."},
+        {"t": "pinakasalan", "e": "married someone", "g": "Completed object focus.", "s": "Pinakasalan ni Juan si Maria.", "se": "Juan married Maria."},
+        {"t": "pakakasalan", "e": "will marry someone", "g": "Future object focus.", "s": "Pakakasalan niya si Maria.", "se": "He or she will marry Maria."},
+        {"t": "mahalin", "e": "to love someone", "g": "Object focus command/infinitive.", "s": "Mahalin mo siya.", "se": "Love him or her."},
+        {"t": "minahal", "e": "loved someone", "g": "Completed object focus.", "s": "Minahal niya si Maria.", "se": "He or she loved Maria."},
+        {"t": "mamahalin", "e": "will love someone", "g": "Future object focus.", "s": "Mamahalin kita.", "se": "I will love you."},
+        {"t": "pangakuan", "e": "to promise someone", "g": "Object focus from pangako.", "s": "Pangakuan mo siya.", "se": "Promise him or her."},
+        {"t": "pinangako", "e": "promised something", "g": "Completed object focus.", "s": "Pinangako niya ito.", "se": "He or she promised this."},
+        {"t": "bigyan", "e": "to give someone", "g": "Beneficiary/object focus.", "s": "Bigyan mo siya ng bulaklak.", "se": "Give him or her flowers."},
+        {"t": "ibigay", "e": "to give", "g": "Object focus: the thing given is focus.", "s": "Ibigay mo ito.", "se": "Give this."},
+        {"t": "basbasan", "e": "to bless someone", "g": "Object focus from basbas.", "s": "Basbasan kayo.", "se": "You will be blessed."},
+        {"t": "pagpalain", "e": "to bless", "g": "Object focus from pagpala.", "s": "Pagpalain kayo ng Diyos.", "se": "God will bless you."}
+      ]
+    },
+    {
+      "name": "Time & Aspect",
+      "icon": "⏳",
+      "items": [
+        {"t": "ngayon", "e": "now", "g": "Time word; usually at end or start.", "s": "Ngayon ang kasal.", "se": "The wedding is now."},
+        {"t": "ngayong araw", "e": "today", "g": "ngayon + linker -ng.", "s": "Ngayong araw ang kasal.", "se": "The wedding is today."},
+        {"t": "bukas", "e": "tomorrow", "g": "Also means open, depending on context.", "s": "Bukas ang kasal.", "se": "The wedding is tomorrow."},
+        {"t": "kahapon", "e": "yesterday", "g": "Past time marker.", "s": "Kahapon sila nagpakasal.", "se": "They got married yesterday."},
+        {"t": "mamaya", "e": "later", "g": "Future time marker.", "s": "Mamaya ang seremonya.", "se": "The ceremony is later."},
+        {"t": "kanina", "e": "earlier", "g": "Recent past.", "s": "Kanina sila dumating.", "se": "They arrived earlier."},
+        {"t": "noong", "e": "when (past)", "g": "Used for past-time clauses.", "s": "Noong bata siya.", "se": "When he or she was young."},
+        {"t": "kapag", "e": "when / whenever", "g": "Used for general or future conditions.", "s": "Kapag handa na sila.", "se": "When they are ready."},
+        {"t": "habang", "e": "while", "g": "Introduces simultaneous action.", "s": "Habang kumakanta sila.", "se": "While they are singing."},
+        {"t": "bago", "e": "before / new", "g": "Context decides meaning.", "s": "Bago ang seremonya.", "se": "Before the ceremony."},
+        {"t": "pagkatapos", "e": "after", "g": "Often followed by ng + event.", "s": "Pagkatapos ng seremonya.", "se": "After the ceremony."},
+        {"t": "magpakailanman", "e": "forever", "g": "Common in vows.", "s": "Magpakailanman kayo.", "se": "You, forever."}
+      ]
+    },
+    {
+      "name": "Markers: ang / ng / sa",
+      "icon": "🔗",
+      "items": [
+        {"t": "ang", "e": "focus marker", "g": "Marks the highlighted person or thing.", "s": "Ang nobya ay maganda.", "se": "The bride is beautiful."},
+        {"t": "ng", "e": "of / by / non-focus marker", "g": "Links possessor or non-focus actor.", "s": "Asawa ng pastor.", "se": "The pastor’s spouse."},
+        {"t": "sa", "e": "at / to / in", "g": "Location or direction marker.", "s": "Sa simbahan sila.", "se": "They are at the church."},
+        {"t": "si", "e": "personal focus marker", "g": "Use before a person’s name as focus.", "s": "Si Maria ang nobya.", "se": "Maria is the bride."},
+        {"t": "ni", "e": "personal non-focus marker", "g": "Use before a name that is not focus.", "s": "Kaibigan ni Maria.", "se": "Maria’s friend."},
+        {"t": "kay", "e": "to / at a person", "g": "Direction toward a person.", "s": "Pumunta siya kay Maria.", "se": "He or she went to Maria."},
+        {"t": "mga", "e": "plural marker", "g": "Put before common nouns.", "s": "Mga bisita.", "se": "Guests."},
+        {"t": "ito", "e": "this", "g": "Near speaker.", "s": "Ito ang sumpaan.", "se": "This is the vow."},
+        {"t": "iyan", "e": "that (near listener)", "g": "Near listener.", "s": "Iyan ang libro.", "se": "That is the book."},
+        {"t": "iyon", "e": "that (far)", "g": "Far from both speakers.", "s": "Iyon ang simbahan.", "se": "That is the church."}
+      ]
+    },
+    {
+      "name": "Linkers & Descriptions",
+      "icon": "✨",
+      "items": [
+        {"t": "maganda", "e": "beautiful", "g": "Adjective.", "s": "Maganda ang nobya.", "se": "The bride is beautiful."},
+        {"t": "magandang", "e": "beautiful (linker form)", "g": "Vowel-final adjective takes -ng.", "s": "Magandang nobya.", "se": "Beautiful bride."},
+        {"t": "bago", "e": "new", "g": "Adjective.", "s": "Bago ang damit.", "se": "The clothes are new."},
+        {"t": "bagong", "e": "new (linker form)", "g": "Vowel-final adjective takes -ng.", "s": "Bagong asawa.", "se": "New spouse."},
+        {"t": "mabait", "e": "kind", "g": "Adjective.", "s": "Mabait siya.", "se": "He or she is kind."},
+        {"t": "mabuting", "e": "kind (linker form)", "g": "Consonant-final adjective takes na, but mabait becomes mabuting.", "s": "Mabuting tao.", "se": "Kind person."},
+        {"t": "malaki", "e": "big", "g": "Adjective.", "s": "Malaki ang pamilya.", "se": "The family is big."},
+        {"t": "malaking", "e": "big (linker form)", "g": "Vowel-final adjective takes -ng.", "s": "Malaking pamilya.", "se": "Big family."},
+        {"t": "mahalagang", "e": "important (linker form)", "g": "From mahalaga + -ng.", "s": "Mahalagang araw.", "se": "Important day."},
+        {"t": "espesyal", "e": "special", "g": "Spanish loanword.", "s": "Espesyal ang araw.", "se": "The day is special."}
+      ]
+    },
+    {
+      "name": "Ceremony Phrases & Blessings",
+      "icon": "🙏",
+      "items": [
+        {"t": "Panginoon", "e": "Lord", "g": "Capitalized in religious contexts.", "s": "Salamat sa Panginoon.", "se": "Thanks be to the Lord."},
+        {"t": "Diyos", "e": "God", "g": "Use ng Diyos for of God.", "s": "Pagpalain kayo ng Diyos.", "se": "God will bless you."},
+        {"t": "basbas", "e": "blessing", "g": "Noun; basbasan = to bless someone.", "s": "Hingi ng basbas.", "se": "Ask for a blessing."},
+        {"t": "pagpapala", "e": "blessing", "g": "Noun from pagpala.", "s": "Pagpapala ng Diyos.", "se": "God’s blessing."},
+        {"t": "dasal", "e": "prayer", "g": "Nagdasal = prayed.", "s": "Manalangin tayo.", "se": "Let us pray."},
+        {"t": "salamat po", "e": "thank you (polite)", "g": "Po adds respect.", "s": "Salamat po.", "se": "Thank you very much."},
+        {"t": "pakiusap", "e": "please", "g": "Polite request marker.", "s": "Pakiusap, dahan-dahan po.", "se": "Please, slowly please."},
+        {"t": "naiintindihan ko", "e": "I understand", "g": "Object-focus ongoing form + ko.", "s": "Naiintindihan ko.", "se": "I understand."}
+      ]
+    }
+  ]
+}
