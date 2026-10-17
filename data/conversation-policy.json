@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "enabled": false,
+  "deployment": "future_oracle_helper_to_gemini",
+  "model": null,
+  "billing": {"freeTierOnly": true, "paidFallbackAllowed": false, "onQuotaExhausted": "preserve_draft_and_pause"},
+  "assessment": {"ratingRange": [0,4], "weights": {"communication": 0.4, "grammar": 0.25, "vocabulary": 0.2, "naturalness": 0.15}, "scoreFormula": "round(10 * sum(weight * rating / 4), 1)", "statuses": ["scored","help_request","english_only","needs_clarification","unassessable"], "rules": ["Assess meaning in context, not exact wording","Accept appropriate short replies, names, place names, and loanwords","English help requests are unscored; English-only task answers are unsuccessful target-language attempts","Do not invent grammar scores for English-only or unassessable replies","Separate true errors from optional style suggestions","Require learner message ID and exact evidence span for goal completion","Do not count bee text as learner evidence","Assisted completion is distinct from independent mastery","An understandable minor grammar error need not block goal completion","No infrastructure failure may penalise the learner"]},
+  "goals": {"states": ["not_attempted","attempted","completed_independently","completed_assisted","skipped"], "completion": "all_required_goals_completed_independently_or_assisted", "allowOutOfOrder": true, "allowMultiplePerMessage": true, "completedGoalsNeverRegress": true},
+  "planner": ["Respond to relevant learner questions before advancing","Ask one main question at a time","Keep bee facts consistent throughout the session","Offer opportunities for pending goals without revealing answers","Use Tagalog for chat and English for optional explanations","Permit fictional personal details and respect refusal to disclose"],
+  "hints": {"levels": ["intent_explanation","sentence_starter","complete_illustrative_answer"], "assistedLevels": [2,3], "authoredPerGoalHintsStatus": "pending_reviewed_authoring"},
+  "sessionScore": "Average first assessable attempts per task; English-only unsuccessful task attempts count zero; help and technical errors excluded; retries reported separately; no attempts means not_scored",
+  "runtimeRequirements": ["Authenticate users and verify session ownership","Server loads trusted missions and policy","Validate structured model output and semantic invariants","Server calculates scores; never trust client-supplied scores","Use idempotency keys and expected session revisions","Only one in-flight turn per session","Limit input, history size, generation tokens, concurrency, and requests","Per-user and global quota guards; no paid fallback","Render messages as text, not raw HTML","API key only in server configuration; never in GitHub or browser","Minimise logs and support deletion and retention policies"],
+  "rewards": {"enabled": false, "lessonUnlocksAllowed": false},
+  "privacy": {"fictionalDetailsAllowed": true, "sensitiveDisclosureRequired": false, "publicLaunchRequiresNoticeReview": true},
+  "health": {"fictionalLanguagePracticeOnly": true, "diagnosisOrTreatmentAllowed": false, "realUrgentConcerns": "suspend_roleplay_and_use_separately_reviewed_safety_handling"}
+}
