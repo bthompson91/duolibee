@@ -37,3 +37,28 @@
   const originalNext=next;
   next=function(){originalNext();};
 })();
+
+// v0.12.0: one visible sequence; persistent IDs remain unchanged.
+(() => {
+  const originalHome=renderHome;
+  renderHome=function(){
+    originalHome();
+    const next=nextLesson();
+    const start=app.querySelector('.next-lesson button');
+    if(start&&next)start.textContent='Start Lesson '+next.order;
+    const ordered=THEMES.flatMap(th=>LESSONS.filter(l=>l.category===th.name));
+    app.querySelectorAll('.lesson-btn').forEach((button,i)=>{
+      const lesson=ordered[i];
+      if(!lesson)return;
+      const unlocked=!!state.completed[lesson.id]||lesson===next;
+      button.disabled=!unlocked;
+      button.classList.toggle('locked',!unlocked);
+      button.classList.toggle('current',lesson===next);
+      button.onclick=unlocked?()=>startLesson(lesson.id):null;
+      const number=button.querySelector('.num');
+      if(number)number.textContent='Lesson '+lesson.order+(unlocked?'':' 🔒');
+    });
+  };
+  const badge=document.querySelector('.brand .ver');
+  if(badge)badge.textContent='v0.12.0';
+})();
