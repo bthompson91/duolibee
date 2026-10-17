@@ -1,8 +1,9 @@
+// DUOLIBEE v0.13.0
 (() => {
-  const originalBuild = buildLessons;
-  buildLessons = function(data) {
+  const originalBuild=buildLessons;
+  buildLessons=function(data){
     originalBuild(data);
-    LESSONS.sort((a,b) => THEMES.findIndex(t=>t.name===a.category)-THEMES.findIndex(t=>t.name===b.category) || a.id-b.id);
+    LESSONS.sort((a,b)=>THEMES.findIndex(t=>t.name===a.category)-THEMES.findIndex(t=>t.name===b.category)||a.id-b.id);
     LESSONS.forEach((l,i)=>{
       l.order=i+1;
       l.title=l.items[0].t+' • Lesson '+l.order;
@@ -25,7 +26,6 @@
       if(matches.length===1){const target=matches[0];if(!state.srs[target])state.srs[target]=state.srs[k];delete state.srs[k];}
     });
   };
-  function rows(){return Object.entries(ITEM_BY_KEY).map(([key,item])=>({key,item}));}
   nextLesson=function(){return LESSONS.find(l=>!state.completed[l.id]);};
   const originalFeedback=feedback;
   feedback=function(ok,msg){if(session.id==='review')session.results[index]=!!ok;originalFeedback(ok,msg);};
@@ -34,31 +34,30 @@
   });
   const originalStart=startLesson;
   startLesson=function(id){const l=LESSONS.find(x=>x.id===id);if(!l||(!state.completed[id]&&l!==nextLesson()))return;delete l._answeredIndex;originalStart(id);};
-  const originalNext=next;
-  next=function(){originalNext();};
-})();
 
-// v0.12.0: one visible sequence; persistent IDs remain unchanged.
-(() => {
-  const originalHome=renderHome;
+  // Render numbers and actions together. Never map visible positions to LESSONS.
   renderHome=function(){
-    originalHome();
+    if(!LESSONS.length)return renderError('The lesson catalog is empty.');
     const next=nextLesson();
-    const start=app.querySelector('.next-lesson button');
-    if(start&&next)start.textContent='Start Lesson '+next.order;
-    const ordered=THEMES.flatMap(th=>LESSONS.filter(l=>l.category===th.name));
-    app.querySelectorAll('.lesson-btn').forEach((button,i)=>{
-      const lesson=ordered[i];
-      if(!lesson)return;
-      const unlocked=!!state.completed[lesson.id]||lesson===next;
-      button.disabled=!unlocked;
-      button.classList.toggle('locked',!unlocked);
-      button.classList.toggle('current',lesson===next);
-      button.onclick=unlocked?()=>startLesson(lesson.id):null;
-      const number=button.querySelector('.num');
-      if(number)number.textContent='Lesson '+lesson.order+(unlocked?'':' 🔒');
+    const done=LESSONS.filter(l=>state.completed[l.id]).length;
+    app.innerHTML=`<section class='hero hero-mascot'><div><h1>Magandang araw! 🐝</h1><p>${done}/${LESSONS.length} lessons • ${state.streak}-day streak</p></div></section>`+
+      (next?`<section class='card next-lesson'><h2>Next lesson</h2><p><strong>${esc(next.icon)} ${esc(next.title)}</strong></p><button class='primary' data-lesson-id='${next.id}'>Start Lesson ${next.order}</button></section>`:`<section class='card'><h2>🎉 All caught up!</h2><p>You have completed every available lesson.</p></section>`)+
+      `<section class='card'><h2>📚 Learn</h2>`+THEMES.map((th,themeIndex)=>{
+        const lessons=LESSONS.filter(l=>l.category===th.name);
+        const open=!!state.openThemes[th.name]||!!(next&&next.category===th.name);
+        return `<div class='theme-block'><button class='theme-header' data-theme-index='${themeIndex}'><span>${esc(th.icon)} ${esc(th.name)}</span><span>${lessons.filter(l=>state.completed[l.id]).length}/${lessons.length} ${open?'▾':'▸'}</span></button>`+
+          (open?`<div class='lessons'>`+lessons.map(l=>{
+            const completed=!!state.completed[l.id],current=l===next,unlocked=completed||current;
+            return `<button class='lesson-btn ${completed?'done':''} ${unlocked?'':'locked'} ${current?'current':''}' data-lesson-id='${l.id}' ${unlocked?'':'disabled'}><span class='num'>Lesson ${l.order}${unlocked?'':' 🔒'}</span>${esc(l.title)}</button>`;
+          }).join('')+`</div>`:'')+`</div>`;
+      }).join('')+`</section>`;
+    app.querySelectorAll('[data-lesson-id]').forEach(button=>{
+      button.onclick=()=>startLesson(Number(button.dataset.lessonId));
+    });
+    app.querySelectorAll('[data-theme-index]').forEach(button=>{
+      button.onclick=()=>toggleTheme(THEMES[Number(button.dataset.themeIndex)].name);
     });
   };
   const badge=document.querySelector('.brand .ver');
-  if(badge)badge.textContent='v0.12.0';
+  if(badge)badge.textContent='v0.13.0';
 })();
