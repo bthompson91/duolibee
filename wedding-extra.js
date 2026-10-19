@@ -1,0 +1,1 @@
+(function wait(){if(!window.WEDDING_EXTRA_ITEMS||!ALL.length){setTimeout(wait,50);return}const items=[...ALL,...window.WEDDING_EXTRA_ITEMS];buildLessons({themes:[{name:'Wedding Emergency',icon:'💍',items}]});save();if(view==='home')renderHome()})();
