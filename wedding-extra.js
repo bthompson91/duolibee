@@ -1,1 +1,1 @@
-(function wait(){if(!window.WEDDING_EXTRA_ITEMS||!window.WEDDING_EXTRA_ITEMS_2||!window.WEDDING_EXTRA_ITEMS_3||!window.WEDDING_EXTRA_ITEMS_4||!ALL.length){setTimeout(wait,50);return}const items=[...ALL,...window.WEDDING_EXTRA_ITEMS,...window.WEDDING_EXTRA_ITEMS_2,...window.WEDDING_EXTRA_ITEMS_3,...window.WEDDING_EXTRA_ITEMS_4];buildLessons({themes:[{name:'Wedding Emergency',icon:'💍',items}]});save();if(view==='home')renderHome()})();
+/* Wedding extras retired in v0.18.0. */
