@@ -1,35 +1,48 @@
-/* v0.18.0: public placeholder only. No provider requests or credentials. */
-(() => {
-  function labelReview() {
-    const tab = document.getElementById('tab-practice');
-    if (tab && tab.textContent !== '🔁 Review') tab.textContent = '🔁 Review';
-  }
-  const previousTabs = renderTabs;
-  renderTabs = function() { previousTabs(); labelReview(); };
-  const previousPractice = renderPractice;
-  renderPractice = function() {
-    previousPractice();
-    const heading = app.querySelector('h2');
-    if (heading) heading.textContent = '🔁 Review';
-    if (document.getElementById('bee-conversations')) return;
-    const card = document.createElement('section');
-    card.id = 'bee-conversations';
-    card.className = 'card';
-    const title = document.createElement('h2');
-    title.textContent = '🐝 Conversations';
-    const description = document.createElement('p');
-    description.textContent = 'Practise written Tagalog with the bee. Midpoint and end-of-topic conversations are planned for each topic, separate from lessons.';
-    const status = document.createElement('p');
-    status.setAttribute('role', 'status');
-    status.textContent = 'Not available yet — the chat service is being prepared and tested.';
-    const button = document.createElement('button');
-    button.className = 'primary';
-    button.disabled = true;
-    button.textContent = 'Chat coming soon';
-    card.append(title, description, status, button);
-    app.append(card);
-    labelReview();
-  };
-  labelReview();
-  if (view === 'practice') renderPractice();
+/* v0.19.0: invited adult Australian Conversations beta. */
+(()=>{
+'use strict';
+const API='https://158-179-30-201.sslip.io/duolibee/chat',CLIENT='953505436719-p73hfncc6p39481s6jaedj975l2a9rul.apps.googleusercontent.com',STORE='duolibee-chat-session-ids-v1';
+let token='',current=null,busy=false,draft='',pending=null,consent=false,hint='',status='Sign in for the invited beta in Settings.',initialised=false;
+const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
+function ids(){try{const a=JSON.parse(localStorage.getItem(STORE)||'[]');return Array.isArray(a)?a.filter(x=>typeof x==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(x)).slice(0,5):[];}catch(_){return[];}}
+function save(a){try{localStorage.setItem(STORE,JSON.stringify(a.slice(0,5)));}catch(_){}}
+function remember(id){save([id,...ids().filter(x=>x!==id)]);}
+function forget(id){save(ids().filter(x=>x!==id));}
+async function api(path,method='GET',body,key=token){
+if(!key)throw Error('Sign in to chat in Settings first.');
+const c=new AbortController(),timer=setTimeout(()=>c.abort(),100000);
+try{const r=await fetch(API+path,{method,credentials:'omit',cache:'no-store',redirect:'error',signal:c.signal,headers:{Authorization:'Bearer '+key,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});let data;try{data=await r.json();}catch(_){data={};}
+if(!r.ok){if(r.status===401){token='';current=null;}const e=Error(r.status===401?'Sign-in expired, unverified, or not invited. Sign in in Settings.':r.status===429?'Usage or request limit reached. Wait before retrying. Your draft is preserved.':r.status>=500?'Chat service unavailable. Your draft is preserved.':String(data.error||'Chat request failed.'));e.code=r.status;throw e;}return data;
+}finally{clearTimeout(timer);}}
+async function run(task){if(busy)return;busy=true;refresh();try{await task();}catch(e){status=e.name==='AbortError'?'Request timed out. Retry the same action or reload; your draft is preserved.':e.message;}finally{busy=false;refresh();}}
+async function load(id){try{current=await api('/sessions/'+encodeURIComponent(id));remember(id);pending=null;hint='';}catch(e){if(e.code===404){forget(id);if(current?.id===id)current=null;}throw e;}}
+async function credential(r){if(!r?.credential)return;await run(async()=>{token='';current=null;pending=null;hint='';const h=await api('/health','GET',undefined,r.credential);if(h.status!=='ok'||h.mode!=='public-beta')throw Error('Unexpected chat service configuration.');token=r.credential;status='Invited account verified. Open Review → Conversations.';});}
+async function googleButton(target){for(let n=0;n<40&&!window.google?.accounts?.id;n++){await new Promise(r=>setTimeout(r,500));if(!target.isConnected)return;}if(!target.isConnected)return;try{if(!initialised){google.accounts.id.initialize({client_id:CLIENT,callback:credential,auto_select:false,ux_mode:'popup'});initialised=true;}google.accounts.id.renderButton(target,{theme:'outline',size:'large',text:'signin_with'});}catch(_){target.append(el('p','Google sign-in is loading or blocked. Reopen Settings in a normal browser tab.'));}}
+function button(parent,text,fn,disabled=false){const b=el('button',text);b.type='button';b.className='ghost';b.disabled=busy||disabled;b.style.cssText='margin:6px;white-space:normal';b.onclick=fn;parent.append(b);return b;}
+function card(id,title){const c=el('section');c.id=id;c.className='card';c.append(el('h2',title));const p=el('p',status);p.setAttribute('role','status');p.setAttribute('aria-live','polite');c.append(p);return c;}
+function notice(c){const a=el('a','Chat privacy, data use, retention and limits');a.href='chat-privacy.html';c.append(a);}
+function settingsCard(){const c=card('bee-chat-settings','🐝 Conversations beta sign-in');c.append(el('p','Invited adults using the beta in Australia only. Chat sign-in uses the existing Google client, separately from optional Drive backup, with no Drive permission request.'));if(token){button(c,'Open Conversations',()=>go('practice'));button(c,'Disconnect chat',()=>{token='';current=null;pending=null;hint='';draft='';consent=false;window.google?.accounts?.id?.disableAutoSelect();status='Disconnected. Server conversations are not deleted.';refresh();});}else{const target=el('div');c.append(target);if(!busy)setTimeout(()=>googleButton(target),0);}notice(c);return c;}
+function eligible(){if(!token||!consent)throw Error('Sign in and accept the adult Australian beta notice first.');}
+async function start(){await run(async()=>{eligible();current=await api('/sessions','POST',{missionId:'introductions-midpoint'});remember(current.id);draft='';pending=null;hint='';status='Reply in Tagalog using fictional details.';});}
+async function sendPending(){if(!pending)return;eligible();const p=pending;try{const r=await api('/sessions/'+encodeURIComponent(p.sid)+'/'+p.kind,'POST',p.body);current=r.session;remember(current.id);if(p.kind==='messages')draft='';hint=r.hint?'Hint '+r.hint.level+': '+r.hint.text:'';pending=null;status=current.status==='active'?'Ready for your next action.':'Conversation finished.';}catch(e){if(e.code===409){pending=null;await load(p.sid);status='Revision changed. Conversation reloaded; check it before sending again.';return;}throw e;}}
+async function act(kind){await run(async()=>{eligible();if(!current||current.status!=='active')throw Error('Load an active conversation first.');if(pending)throw Error('Retry the pending action or reload first.');const body={requestId:crypto.randomUUID(),expectedRevision:current.revision};if(kind==='messages'){if(!draft.trim()||draft.trim().length>500)throw Error('Use 1–500 characters.');body.text=draft.trim();}pending={sid:current.id,kind,body};await sendPending();});}
+function conversationCard(){
+const c=card('bee-conversations','🐝 Conversations · restricted beta');c.append(el('p','Meet the bee: introduce a fictional character and place of origin in Tagalog. AI ratings may be wrong. No XP, hearts or lesson unlocks change.'));
+if(!token){button(c,'Sign in in Settings',()=>go('settings'));return c;}
+const label=el('label'),check=el('input');check.type='checkbox';check.checked=consent;check.disabled=busy;check.onchange=()=>{consent=check.checked;refresh();};label.style.display='block';label.append(check,document.createTextNode(' I am 18+, currently in Australia, and accept the chat notice. Fictional replies and recent conversation text go to Gemini; unpaid-service content may be human-reviewed and used to improve Google products. I will not submit sensitive or personal information.'));c.append(label);notice(c);button(c,'Start introduction',start,!consent||!!pending);
+const known=ids();if(known.length){const select=el('select');select.setAttribute('aria-label','Saved conversations on this device');for(const [i,id]of known.entries()){const o=el('option','Conversation '+(i+1)+' · '+id.slice(0,8));o.value=id;select.append(o);}if(current&&known.includes(current.id))select.value=current.id;select.disabled=busy;c.append(select);button(c,'Load selected',()=>run(async()=>{await load(select.value);status='Conversation loaded.';}));}
+if(!current)return c;c.append(el('h3','Meet the bee — '+current.status.replaceAll('_',' ')));
+for(const m of current.messages||[]){const p=el('p');p.style.whiteSpace='pre-wrap';p.append(el('strong',m.role==='bee'?'Bee: ':'You: '),document.createTextNode(String(m.text)));c.append(p);}if(hint)c.append(el('p',hint));
+const last=current.attempts?.at(-1);if(last){c.append(el('h3','Latest reply assessment'),el('p',last.score===null?'Unscored: '+last.status:'Reply score: '+last.score+'/10'),el('p',last.feedback));if(last.score!==null)c.append(el('p',Object.entries(last.ratings||{}).map(([k,v])=>k+': '+v+'/4').join(' · ')));}
+const goals=Object.entries(current.completed||{});if(goals.length)c.append(el('p','Completed goals: '+goals.map(([k,v])=>k+' ('+v.mode+')').join('; ')));
+if(current.status==='active'){const form=el('form'),input=el('textarea');input.value=draft;input.maxLength=500;input.rows=3;input.setAttribute('aria-label','Your Tagalog reply');input.placeholder='Your Tagalog reply…';input.style.cssText='display:block;width:100%;box-sizing:border-box';input.disabled=busy||!!pending;input.oninput=()=>{draft=input.value;};form.append(input);button(form,'Send reply',()=>act('messages'),!consent||!!pending).className='primary';form.onsubmit=e=>{e.preventDefault();act('messages');};c.append(form);const goal=['name','origin'].find(id=>!current.completed?.[id]),n=Math.min((current.hintLevels?.[goal]||0)+1,3);button(c,'Hint '+n+' — '+['explanation','starter (assisted)','example (assisted)'][n-1],()=>act('hint'),!consent||!!pending);button(c,'End conversation',()=>act('end'),!consent||!!pending);}
+if(pending)button(c,'Retry same pending action',()=>run(sendPending),!consent);
+button(c,'Reload from server',()=>run(async()=>{await load(current.id);status='Reloaded. Your draft is preserved.';}));
+button(c,'Delete this conversation',()=>{if(confirm('Delete this conversation from the live database? Operator backups and provider records are separate.'))run(async()=>{const id=current.id;await api('/sessions/'+encodeURIComponent(id),'DELETE');forget(id);current=null;pending=null;hint='';draft='';status='Deleted from the live database.';});},!!pending);return c;}
+function labelReview(){const t=document.getElementById('tab-practice');if(t)t.textContent='🔁 Review';}
+function refresh(){if(view==='settings'){document.getElementById('bee-chat-settings')?.remove();app.prepend(settingsCard());}if(view==='practice'){document.getElementById('bee-conversations')?.remove();app.append(conversationCard());}}
+const tabs=renderTabs;renderTabs=function(){tabs();labelReview();};
+const settings=renderSettings;renderSettings=function(){settings();app.prepend(settingsCard());};
+const practice=renderPractice;renderPractice=function(){practice();const h=app.querySelector('h2');if(h)h.textContent='🔁 Review';app.append(conversationCard());labelReview();};
+labelReview();refresh();
 })();
