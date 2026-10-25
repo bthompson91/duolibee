@@ -38,7 +38,7 @@ cat > "$stage/service.conf" <<EOF
 [Service]
 WorkingDirectory=$stage/server
 ExecStart=
-ExecStart=$stage/venv/bin/gunicorn --bind 127.0.0.1:15002 --workers 1 --threads 1 --timeout 120 --graceful-timeout 120 --error-logfile - "chat_app:create_app()"
+ExecStart=$stage/venv/bin/gunicorn --bind 127.0.0.1:15002 --workers 1 --threads 1 --timeout 120 --graceful-timeout 120 --error-logfile - "chat_app:create_app(daily_limit=450,account_daily_limit=400,shared_minute_limit=12,account_minute_limit=10)"
 EOF
 activated=0
 rollback() {

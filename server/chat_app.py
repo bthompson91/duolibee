@@ -103,10 +103,10 @@ def introduction_answer(text, goal):
     return ('Sa kuwento natin, taga-Pilipinas ako.' if gid=='origin' else 'Ako si Bee!'),gid,pure
 
 
-def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limit=30,public_origin=None,google_client_id=None,identity_verifier=None,catalog_loader=None):
+def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limit=30,public_origin=None,google_client_id=None,identity_verifier=None,catalog_loader=None,account_daily_limit=10,shared_minute_limit=5,account_minute_limit=3):
     if token is None and public_origin is None and google_client_id is None:public_origin,google_client_id=ORIGIN,CLIENT
     if bool(public_origin)!=bool(google_client_id):raise ValueError('Incomplete public configuration')
-    if type(daily_limit) is not int or daily_limit<1:raise ValueError('Invalid quota')
+    if any(type(v) is not int or v<1 for v in (daily_limit,account_daily_limit,shared_minute_limit,account_minute_limit)):raise ValueError('Invalid quota')
     public=bool(public_origin);verify=identity_verifier or (google_verifier(google_client_id) if public else None)
     state_dir=Path(state_dir or Path.home()/'.local/state/duolibee-chat');state_dir.mkdir(parents=True,exist_ok=True,mode=0o700);state_dir.chmod(0o700)
     db_path=state_dir/'chat.sqlite3';db_path.touch(mode=0o600,exist_ok=True);db_path.chmod(0o600)
@@ -259,8 +259,8 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limi
                     day=time.strftime('%Y-%m-%d',time.gmtime());minute=int(time.time())//60
                     def count(table,where,args):
                         row=c.execute('SELECT total FROM '+table+' WHERE '+where,args).fetchone();return row[0] if row else 0
-                    if count('usage','day=?',(day,))>=daily_limit or count('minutes','minute=?',(minute,))>=5:return fail('Shared usage limit reached.',429)
-                    if public and (count('account_usage_v026','subject=? AND day=?',(g.subject,day))>=10 or count('account_minutes_v026','subject=? AND minute=?',(g.subject,minute))>=3):return fail('Account usage limit reached.',429)
+                    if count('usage','day=?',(day,))>=daily_limit or count('minutes','minute=?',(minute,))>=shared_minute_limit:return fail('Shared usage limit reached.',429)
+                    if public and (count('account_usage_v026','subject=? AND day=?',(g.subject,day))>=account_daily_limit or count('account_minutes_v026','subject=? AND minute=?',(g.subject,minute))>=account_minute_limit):return fail('Account usage limit reached.',429)
                     c.execute('INSERT INTO usage VALUES (?,1) ON CONFLICT(day) DO UPDATE SET total=total+1',(day,));c.execute('INSERT INTO minutes VALUES (?,1) ON CONFLICT(minute) DO UPDATE SET total=total+1',(minute,));c.execute('DELETE FROM minutes WHERE minute<?',(minute-10,))
                     if public:
                         c.execute('INSERT INTO account_usage_v026 VALUES (?,?,1) ON CONFLICT(subject,day) DO UPDATE SET total=total+1',(g.subject,day));c.execute('INSERT INTO account_minutes_v026 VALUES (?,?,1) ON CONFLICT(subject,minute) DO UPDATE SET total=total+1',(g.subject,minute));c.execute('DELETE FROM account_minutes_v026 WHERE minute<?',(minute-10,))
@@ -276,8 +276,8 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limi
                         day=time.strftime('%Y-%m-%d',time.gmtime());minute=int(time.time())//60
                         def count(table,where,args):
                             row=c.execute('SELECT total FROM '+table+' WHERE '+where,args).fetchone();return row[0] if row else 0
-                        if count('usage','day=?',(day,))>=daily_limit or count('minutes','minute=?',(minute,))>=5:return fail('Shared usage limit reached.',429)
-                        if public and (count('account_usage_v026','subject=? AND day=?',(g.subject,day))>=10 or count('account_minutes_v026','subject=? AND minute=?',(g.subject,minute))>=3):return fail('Account usage limit reached.',429)
+                        if count('usage','day=?',(day,))>=daily_limit or count('minutes','minute=?',(minute,))>=shared_minute_limit:return fail('Shared usage limit reached.',429)
+                        if public and (count('account_usage_v026','subject=? AND day=?',(g.subject,day))>=account_daily_limit or count('account_minutes_v026','subject=? AND minute=?',(g.subject,minute))>=account_minute_limit):return fail('Account usage limit reached.',429)
                         c.execute('INSERT INTO usage VALUES (?,1) ON CONFLICT(day) DO UPDATE SET total=total+1',(day,));c.execute('INSERT INTO minutes VALUES (?,1) ON CONFLICT(minute) DO UPDATE SET total=total+1',(minute,));c.execute('DELETE FROM minutes WHERE minute<?',(minute-10,))
                         if public:
                             c.execute('INSERT INTO account_usage_v026 VALUES (?,?,1) ON CONFLICT(subject,day) DO UPDATE SET total=total+1',(g.subject,day));c.execute('INSERT INTO account_minutes_v026 VALUES (?,?,1) ON CONFLICT(subject,minute) DO UPDATE SET total=total+1',(g.subject,minute));c.execute('DELETE FROM account_minutes_v026 WHERE minute<?',(minute-10,))
