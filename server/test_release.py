@@ -24,6 +24,7 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(c.post('/sessions',json=body|{'vocabularyThroughLesson':True},headers=h).status_code,400)
             self.assertEqual(c.post('/sessions',json={'missionId':[]},headers=h).status_code,400)
     def test_intro_questions(self):
-        self.assertEqual(introduction_answer('At ikaw?',{'id':'origin'}),('Taga-Pilipinas ako.','origin',True))
+        self.assertEqual(introduction_answer('At ikaw?',{'id':'origin'}),('Sa kuwento natin, taga-Pilipinas ako.','origin',True))
+        self.assertEqual(introduction_answer('At ikaw?',{'id':'name'}),('Ako si Bee!','name',True))
         self.assertFalse(introduction_answer('Ako si Alex, at ikaw?',{'id':'name'})[2])
 if __name__=='__main__':unittest.main()

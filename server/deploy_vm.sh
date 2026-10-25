@@ -12,9 +12,11 @@ python3 -m venv "$stage/venv"
 "$stage/venv/bin/python" -m pip install -r "$stage/server/requirements.txt"
 for test in "$HOME"/duolibee-chat/test_*.py; do
   [[ -f "$test" ]] || continue
+  if [[ -f "$stage/server/$(basename "$test")" ]] && cmp -s "$test" "$stage/server/$(basename "$test")"; then continue; fi
   cp "$test" "$stage/server/test_vm_$(basename "$test")"
 done
 (cd "$stage/server" && "$stage/venv/bin/python" -m unittest discover -s . -p 'test_*.py' -v)
+version=$(cd "$stage/server" && "$stage/venv/bin/python" -c 'from chat_app import VERSION; print(VERSION)')
 "$stage/venv/bin/python" - "$stage" <<'PY'
 import json,sys,tempfile
 from pathlib import Path
@@ -79,4 +81,4 @@ rm -f "$headers"
 printf '%s\n' "$commit" > "$state/installed-commit"
 activated=0
 trap - ERR
-printf 'Installed backend v0.26.0, commit %s. Tests and browser preflight passed. Verify Google sign-in and a real assessment in the website.\n' "$commit"
+printf 'Installed backend v%s, commit %s. Tests and browser preflight passed. Verify Google sign-in and a real assessment in the website.\n' "$version" "$commit"

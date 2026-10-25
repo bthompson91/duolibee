@@ -1,10 +1,10 @@
-"""Duolibee v0.26.0: versioned source; Google-authenticated, single-worker backend."""
+"""Duolibee v0.27.0: versioned source; Google-authenticated, single-worker backend."""
 from contextlib import contextmanager
 from pathlib import Path
 import hashlib, hmac, json, os, re, secrets, sqlite3, threading, time, uuid
 import requests
 from flask import Flask, jsonify, request, g
-VERSION='0.26.0'
+VERSION='0.27.0'
 DIMS=['communication','grammar','vocabulary','naturalness']
 WEIGHTS=[.4,.25,.2,.15]
 MODEL='gemini-3.5-flash-lite'
@@ -88,7 +88,7 @@ def introduction_answer(text, goal):
     if not(name or origin or reciprocal):return '',None,False
     gid='origin' if origin or (reciprocal and goal and goal['id']=='origin') else 'name'
     pure=bool(re.fullmatch(r'(?:ano ang pangalan mo|anong pangalan mo|sino ka|taga[- ]saan ka|(?:at )?ikaw(?: naman)?)[?.! ]*',q))
-    return ('Taga-Pilipinas ako.' if gid=='origin' else 'Ako si Bee.'),gid,pure
+    return ('Sa kuwento natin, taga-Pilipinas ako.' if gid=='origin' else 'Ako si Bee!'),gid,pure
 
 
 def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limit=30,public_origin=None,google_client_id=None,identity_verifier=None,catalog_loader=None):
