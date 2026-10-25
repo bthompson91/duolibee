@@ -177,6 +177,14 @@ class BeeThreadStore:
             self.advance(c,subject)
             return self.snapshot(c,subject)
 
+    def notifications(self,subject,since=0):
+        if type(since) is not int or not 0<=since<=9223372036854775807:
+            raise ValueError('Invalid notification cursor')
+        with self.db() as c:
+            unread=sum(json.loads(r['payload']).get('role')=='bee' for r in c.execute('SELECT payload FROM bee_thread_events WHERE subject=? AND id>?',(subject,since)))
+            latest=c.execute('SELECT COALESCE(MAX(id),0) FROM bee_thread_events WHERE subject=?',(subject,)).fetchone()[0]
+            return dict(unread=unread,lastEventId=latest)
+
     def history(self,subject,before):
         with self.lock,self.db() as c:
             return self.snapshot(c,subject,before)
@@ -249,6 +257,14 @@ def register_thread_routes(app,db_path,catalog,vocabulary,public):
             return jsonify(error=str(error)),409
         except (ValueError,KeyError,OSError):
             return jsonify(error='Mission catalog unavailable.'),503
+
+    @app.get('/thread/notifications')
+    def thread_notifications():
+        try:
+            since=int(request.args.get('since','0'))
+            return jsonify(store.notifications(owner(),since))
+        except (ValueError,OverflowError):
+            return jsonify(error='Invalid notification cursor.'),400
 
     @app.get('/thread/history')
     def thread_history():

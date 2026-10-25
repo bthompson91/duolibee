@@ -116,6 +116,7 @@
     if(pending)button(c,'Retry sending',()=>run(retry));
     else if(failed)button(c,'Reconnect to Bee',()=>run(openThread));
     app.replaceChildren(c);log.scrollTop=olderAnchor===null?log.scrollHeight:Math.max(0,log.scrollHeight-olderAnchor);olderAnchor=null;
+    if(snapshot&&!document.hidden&&messages.length)window.dispatchEvent?.(new CustomEvent('duolibee-thread-viewed',{detail:{subject:owner(),lastEventId:messages[messages.length-1].eventId}}));
     if(!snapshot&&!busy&&!failed)queueMicrotask(()=>{if(view==='chat'&&!snapshot&&!busy&&!failed)run(async()=>{await openThread();if(pending)await retry();});});
   }
   function refresh(){if(view==='chat')draw();if(view==='settings'){document.getElementById('chat-preference')?.remove();app.append(gate());}}
