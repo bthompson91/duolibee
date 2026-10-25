@@ -47,7 +47,7 @@ def schema(mission):
 def evaluate(key_path,text,state,mission,missions):
     dialogue_v2=mission.get('dialogueVersion')==2
     instructions=CONVERSATION_POLICY if dialogue_v2 else BEE_POLICY
-    prompt=dict(mission=mission['title'],goals=[dict(id=g['id'],description=g['description']) for g in mission['goals']],completedGoals=list(state.get('completed',{})),hintLevels=state.get('hints',{}),currentBeeMessage=state['messages'][-1]['text'],recentMessages=state['messages'][-8:],learnerReply=text,suggestedVocabulary=state.get('vocabularySnapshot',vocab_for(missions,state.get('vocabularyThroughLesson',0))))
+    prompt=dict(mission=mission['title'],goals=[dict(id=g['id'],description=g['description']) for g in mission['goals']],completedGoals=list(state.get('completed',{})),hintLevels=state.get('hints',{}),currentBeeMessage=state['messages'][-1]['text'],recentMessages=(state.get('threadRecent',[])+state['messages'])[-8:],learnerReply=text,suggestedVocabulary=state.get('vocabularySnapshot',vocab_for(missions,state.get('vocabularyThroughLesson',0))))
     payload={'systemInstruction':{'parts':[{'text':instructions}]},'contents':[{'parts':[{'text':json.dumps(prompt,ensure_ascii=False)}]}],'generationConfig':{'maxOutputTokens':4096,'thinkingConfig':{'thinkingLevel':'low'},'responseFormat':{'text':{'mimeType':'APPLICATION_JSON','schema':schema(mission)}}}}
     try:
         key=key_path.read_text().strip()
@@ -207,7 +207,7 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limi
         try:
             with db() as c:
                 now=int(time.time())
-                expired=[r[0] for r in c.execute('SELECT id FROM sessions WHERE updated<?',(now-7*86400,))]
+                expired=[r[0] for r in c.execute('SELECT id FROM sessions WHERE updated<? AND id NOT IN (SELECT sid FROM bee_threads WHERE sid IS NOT NULL)',(now-7*86400,))]
                 for sid in expired:
                     for table,column in (('replies','session_id'),('owners_v026','session_id'),('sessions','id')):c.execute('DELETE FROM '+table+' WHERE '+column+'=?',(sid,))
                 if c.execute('SELECT COUNT(*) FROM sessions').fetchone()[0]>=20:return fail('Delete an old conversation first.',429)
@@ -305,4 +305,6 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limi
                 c.execute('UPDATE sessions SET state=?,updated=? WHERE id=?',(json.dumps(s),int(time.time()),sid));c.execute('INSERT INTO replies VALUES (?,?,?,?)',(sid,rid,fingerprint,json.dumps(result)))
             return jsonify(result)
         finally:lock.release()
+    from continuous_thread import register_thread_routes
+    register_thread_routes(app,db_path,catalog,vocab_for,public)
     return app

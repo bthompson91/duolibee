@@ -1,34 +1,129 @@
-/* v0.24.0: lesson-based chat missions; auto-start next lesson; vocabulary through furthest completed lesson. */
-(()=>{
-const API='https://158-179-30-201.sslip.io/duolibee/chat',PREF='duolibee-chat-enabled-v1',node=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
-let enabled=false;try{enabled=localStorage.getItem(PREF)==='true';}catch(_){}let current=null,draft='',pending=null,busy=false,hint='',message='',epoch=0,autoStarting=false,autoStartFailed=false;const requests=new Set(),auth=()=>window.duolibeeAccount,key=()=>auth()?.getIdToken()||'',profile=()=>auth()?.getProfile();
-function storage(){return'duolibee-chat-ids-v2:'+(profile()?.sub||'signed-out');}
-function ids(){try{const a=JSON.parse(localStorage.getItem(storage())||(profile()?.email==='bthompson91@gmail.com'?localStorage.getItem('duolibee-chat-session-ids-v1'):null)||'[]');return Array.isArray(a)?a.filter(x=>typeof x==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(x)).slice(0,5):[];}catch(_){return[];}}
-function remember(id,remove=false){try{localStorage.setItem(storage(),JSON.stringify([...(remove?[]:[id]),...ids().filter(x=>x!==id)].slice(0,5)));}catch(_){}}
-function furthestLesson(){try{const nums=Object.keys(state.completed||{}).map(k=>parseInt(String(k).replace(/[^0-9]/g,''),10)).filter(n=>Number.isFinite(n));return nums.length?Math.max(...nums):0;}catch(_){return 0;}}
-function nextLessonMission(){return'lesson-'+String(Math.min(furthestLesson()+1,100)).padStart(3,'0');}
-function vocabThrough(){return furthestLesson();}
-function cancel(){epoch++;requests.forEach(c=>c.abort());current=null;pending=null;hint='';}
-function enable(v){enabled=v;try{localStorage.setItem(PREF,String(v));}catch(_){}if(v)autoStartFailed=false;if(!v){cancel();if(view==='chat')go('settings');}renderTabs();refresh();}
-async function api(path,method='GET',body){if(!enabled||!key())throw Error('Enable Chat and sign in in Settings.');const c=new AbortController(),e=epoch,t=setTimeout(()=>c.abort(),100000);requests.add(c);try{const r=await fetch(API+path,{method,credentials:'omit',redirect:'error',cache:'no-store',signal:c.signal,headers:{Authorization:'Bearer '+key(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});let data;try{data=await r.json();}catch(_){data={};}if(e!==epoch)throw new DOMException('Connection changed','AbortError');if(!r.ok){const error=Error(r.status===401?'Google sign-in expired or could not be verified. Reconnect in Settings.':r.status===429?'Usage limit reached. Wait before retrying.':r.status>=500?({quota_or_rate_limit:'Gemini is rate-limited or its quota is exhausted. Try later; your draft is preserved.',invalid_assessment:'The assessment response could not be validated. Retry later; your draft is preserved.',connection_or_key_error:'The assessment provider connection failed. Your draft is preserved.'}[data.error]||'Assessment service unavailable. Your draft is preserved.'):String(data.error||'Request failed.'));error.code=r.status;throw error;}return data;}finally{clearTimeout(t);requests.delete(c);}}
-async function run(fn){if(busy)return;busy=true;const e=epoch;refresh();try{await fn();}catch(error){if(e===epoch){message=error.name==='AbortError'?'Timed out. Retry the same action or reload; your draft is preserved.':error.message;autoStartFailed=true;}}finally{busy=false;autoStarting=false;refresh();}}
-async function load(id){try{current=await api('/sessions/'+encodeURIComponent(id));remember(id);pending=null;hint='';}catch(e){if(e.code===404){remember(id,true);if(current?.id===id)current=null;}throw e;}}
-async function retry(){if(!pending)return;const p=pending;try{const r=await api('/sessions/'+p.id+'/'+p.kind,'POST',p.body);current=r.session;remember(current.id);if(p.kind==='messages')draft='';hint=r.hint?'Hint '+r.hint.level+': '+r.hint.text:'';pending=null;message=current.status==='active'?'':'Conversation finished.';}catch(e){if(e.code===409){pending=null;await load(p.id);message='Conversation reloaded after a revision change. Check it before sending again.';}else throw e;}}
-function action(kind){return run(async()=>{if(!current||current.status!=='active')throw Error('Load an active chat first.');if(pending)throw Error('Retry the pending action or reload first.');const body={requestId:crypto.randomUUID(),expectedRevision:current.revision};if(kind==='messages'){if(!draft.trim()||draft.trim().length>500)throw Error('Use 1–500 characters.');body.text=draft.trim();}pending={id:current.id,kind,body};await retry();});}
-function button(c,text,fn,disabled=false){const b=node('button',text);b.type='button';b.className='ghost';b.disabled=busy||disabled;b.onclick=fn;c.append(b);return b;}
-function gate(){const c=node('section');c.id='chat-preference';c.className='card';c.append(node('h2','Chat'));const label=node('label'),check=node('input');check.type='checkbox';check.checked=enabled;check.onchange=()=>enable(check.checked);label.append(check,document.createTextNode(' I confirm that I am a legal adult and agree to Google’s policies stated '));const g=node('a','here');g.href='https://ai.google.dev/gemini-api/terms';g.target='_blank';g.rel='noopener';label.append(g,document.createTextNode('.'));const a=node('a','DUOLIBEE’s chat data-use notice');a.href='chat-privacy.html';c.append(label,node('p','Chat uses Google Gemini. It is not available in the European Economic Area, Switzerland, or the United Kingdom under the current free service. Use fictional details only; see '),a,node('p','Untick if eligibility changes. This device-only preference hides Chat without deleting conversations and is not cloud-synced.'));return c;}
-function bubble(c,text,mine=false){if(!String(text||'').trim())return;const r=node('div');r.className='im-row '+(mine?'mine':'bee');const b=node('div',text);b.className='im-bubble';b.setAttribute('aria-label',mine?'You':'Bee');r.append(b);c.append(r);}
-function draw(){if(!enabled)return go('settings');const c=node('section');c.className='im-shell';const h=node('header');h.className='im-header';h.append(node('h2','🐝 Bee'),node('small','Lesson chat · fictional Tagalog practice'));c.append(h);const status=node('p',message);status.setAttribute('role','status');c.append(status);if(!key()){c.append(node('p','Sign in once in Settings. Cloud backup uses the same account.'));button(c,'Settings',()=>go('settings'));app.replaceChildren(c);return;}
-if(!current&&!pending&&!busy&&!autoStarting&&!autoStartFailed){autoStarting=true;const saved=ids();run(async()=>{try{if(saved.length)await load(saved[0]);else current=await api('/sessions','POST',{missionId:nextLessonMission(),vocabularyThroughLesson:vocabThrough(),numberingVersion:'display-v2'});remember(current.id);pending=null;draft='';hint='';message=current.status==='active'?'':'Conversation finished.';}finally{autoStarting=false;}});return;}
-const options=node('details');options.append(node('summary','Conversation options'));button(options,'New lesson chat',()=>run(async()=>{autoStartFailed=false;current=await api('/sessions','POST',{missionId:nextLessonMission(),vocabularyThroughLesson:vocabThrough(),numberingVersion:'display-v2'});remember(current.id);pending=null;draft='';hint='';message='Use fictional details and reply in Tagalog.';}),!!pending);
-const saved=ids();if(saved.length){const select=node('select');select.setAttribute('aria-label','Saved conversations');saved.forEach((id,i)=>{const o=node('option','Chat '+(i+1)+' · '+id.slice(0,8));o.value=id;select.append(o);});if(current)select.value=current.id;options.append(select);button(options,'Load',()=>run(()=>load(select.value)));}
-if(current){button(options,'Reload',()=>run(()=>load(current.id)));if(current.status==='active')button(options,'End',()=>action('end'),!!pending);button(options,'Delete',()=>{if(confirm('Delete this chat from the live database? Operator backups and provider records are separate.'))run(async()=>{const id=current.id;await api('/sessions/'+id,'DELETE');remember(id,true);current=null;pending=null;draft='';hint='';message='Deleted from the live database.';});},!!pending);}c.append(options);
-const log=node('div');log.className='im-log';log.setAttribute('aria-label','Chat transcript');const attempts=new Map((current?.attempts||[]).map(a=>[a.messageId,a])),last=current?.attempts?.at(-1);
-if(!current&&!autoStarting)bubble(log,'Choose New lesson chat to begin.');for(const m of current?.messages||[]){bubble(log,String(m.text),m.role==='learner');const a=attempts.get(m.id);if(a){if(a.status==='scored'){const image=node('img');image.className='im-sticker';const good=a.score>=7;image.src='assets/'+(a===last&&current.status==='completed'?'mascot-celebration.png':good?'mascot-correct.png':'mascot-keep-going.png');image.alt=good?'Bee sticker: well done!':'Bee sticker: keep going!';const row=node('div');row.className='im-row bee';row.append(image);log.append(row);}if(a.status!=='scored'&&a.feedback)bubble(log,a.feedback);}}
-if(hint)bubble(log,hint);if(busy)bubble(log,pending?.kind==='messages'?'Assessing…':'Working…');c.append(log);
-if(current){const d=node('details');d.append(node('summary','Scores and progress'));if(last){d.append(node('p',last.score===null?(last.status==='help_request'&&!last.feedback?'Conversation question · not scored':'Unscored: '+last.status):'Latest reply: '+last.score+'/10'));if(last.feedback)d.append(node('p',last.feedback));if(last.score!==null)d.append(node('p',Object.entries(last.ratings||{}).map(([k,v])=>k+': '+v+'/4').join(' · ')));}d.append(node('p',Object.entries(current.completed||{}).map(([k,v])=>k+': '+v.mode).join(' · ')||'No goals completed.'),node('p','AI scores can be wrong. No XP, hearts or lesson rewards change.'));c.append(d);}
-if(current?.status==='active'){const f=node('form');f.className='im-composer';const input=node('textarea');input.rows=2;input.maxLength=500;input.value=draft;input.placeholder='Message in Tagalog…';input.setAttribute('aria-label','Your Tagalog reply');input.disabled=busy||!!pending;input.oninput=()=>draft=input.value;f.append(input);button(f,'Send',()=>action('messages'),!!pending).className='primary';const goal=Object.keys(current.hintLevels||{}).find(k=>!(current.completed||{})[k])||'theme-response',level=Math.min((current.hintLevels?.[goal]||0)+1,3);button(f,'Hint '+level+' · '+['explain','starter (assisted)','example (assisted)'][level-1],()=>action('hint'),!!pending);f.onsubmit=e=>{e.preventDefault();action('messages');};c.append(f);}if(pending)button(c,'Retry same action',()=>run(retry));app.replaceChildren(c);log.scrollTop=log.scrollHeight;}
-function refresh(){if(view==='chat')draw();if(view==='settings'){document.getElementById('chat-preference')?.remove();app.append(gate());}}
-const tabs=renderTabs;renderTabs=function(){tabs();const t=document.getElementById('tab-chat');if(t){t.classList.toggle('active',view==='chat');}document.getElementById('tab-profile')?.remove();};const oldGo=go;go=function(n,...a){if(n==='profile')n='practice';if(n!=='chat')return oldGo(n,...a);if(!enabled)return oldGo('settings');oldGo('practice');view='chat';renderTabs();draw();};
-const settings=renderSettings;renderSettings=function(){settings();app.append(gate());};const review=renderPractice;renderPractice=function(){review();const c=node('section');c.className='card';c.append(node('h2','Your progress'),node('p',Object.keys(state.completed||{}).length+' lessons · '+Object.keys(state.srs||{}).length+' review items · '+(state.streak||0)+' day streak · '+(state.xp||0)+' XP'));app.prepend(c);};window.addEventListener('duolibee-account',()=>{cancel();draft='';message='';autoStartFailed=false;refresh();});window.addEventListener('storage',e=>{if(e.key===PREF){enabled=e.newValue==='true';if(enabled)autoStartFailed=false;if(!enabled){cancel();if(view==='chat')go('settings');}renderTabs();refresh();}});renderTabs();refresh();
+/* v0.34.0: one durable Bee thread; automatic lesson transitions. */
+(() => {
+  'use strict';
+  const API='https://158-179-30-201.sslip.io/duolibee/chat';
+  const PREF='duolibee-chat-enabled-v1';
+  const node=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
+  const account=()=>window.duolibeeAccount;
+  const token=()=>account()?.getIdToken()||'';
+  const owner=()=>account()?.getProfile()?.sub||account()?.getProfile()?.email||'';
+  let enabled=false;
+  try{enabled=localStorage.getItem(PREF)==='true';}catch(_){}
+  let snapshot=null,messages=[],hasOlder=false,draft='',pending=null,busy=false,failed=false,notice='',epoch=0,activeOwner=owner();
+  let olderAnchor=null;
+  const requests=new Set();
+  const storageKey=()=>`duolibee-thread-draft-v1:${owner()}`;
+  function persist(){if(!owner())return;try{sessionStorage.setItem(storageKey(),JSON.stringify({draft,pending}));}catch(_){}}
+  function restore(){if(!owner())return;try{const s=JSON.parse(sessionStorage.getItem(storageKey())||'{}');draft=typeof s.draft==='string'?s.draft.slice(0,500):'';pending=s.pending&&typeof s.pending==='object'?s.pending:null;}catch(_){}}
+  restore();
+  function scope(){try{const n=Object.keys(state.completed||{}).map(k=>parseInt(String(k).replace(/[^0-9]/g,''),10)).filter(Number.isFinite);return Math.min(100,Math.max(0,...n));}catch(_){return 0;}}
+  function cancel(){epoch++;requests.forEach(c=>c.abort());snapshot=null;messages=[];hasOlder=false;pending=null;draft='';busy=false;failed=false;notice='';}
+  async function api(path,method='GET',body){
+    if(!enabled||!token())throw Error('Enable Chat and sign in in Settings.');
+    const controller=new AbortController(),e=epoch;
+    const timer=setTimeout(()=>controller.abort(),100000);requests.add(controller);
+    try{
+      const r=await fetch(API+path,{method,credentials:'omit',redirect:'error',cache:'no-store',signal:controller.signal,
+        headers:{Authorization:'Bearer '+token(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+      let data;try{data=await r.json();}catch(_){data={};}
+      if(e!==epoch)throw new DOMException('Account changed','AbortError');
+      if(!r.ok){
+        const provider={quota_or_rate_limit:'Google Gemini has reached a provider quota or rate limit. Try later.',invalid_assessment:'Bee’s response could not be validated. Your draft is safe; please retry.',connection_or_key_error:'Could not reach the assessment provider. Your draft is safe.'};
+        const error=Error(r.status===401?'Please reconnect your Google account in Settings.':r.status===404?'The continuous-chat backend is not installed yet. Run voila after updating.':provider[data.error]||data.error||'Chat could not connect. Please retry.');
+        error.code=r.status;throw error;
+      }
+      return data;
+    }finally{clearTimeout(timer);requests.delete(controller);}
+  }
+  function accept(data,older=false){
+    if(!data||!Array.isArray(data.messages))throw Error('Unexpected chat response.');
+    const first=!snapshot;
+    const merged=new Map(messages.map(m=>[m.eventId,m]));
+    data.messages.forEach(m=>merged.set(m.eventId,m));
+    messages=[...merged.values()].sort((a,b)=>a.eventId-b.eventId);
+    if(first||older)hasOlder=!!data.hasOlder;
+    if(!older)snapshot=data;
+  }
+  async function openThread(){accept(await api('/thread/open','POST',{lesson:Math.min(scope()+1,100),vocabularyThroughLesson:scope()}));}
+  async function run(fn){
+    if(busy)return;
+    const e=epoch;busy=true;notice='';draw();
+    try{await fn();if(e===epoch)failed=false;}
+    catch(error){if(e===epoch){failed=true;notice=error.name==='AbortError'?'Connection interrupted. Your draft is preserved.':error.message;}}
+    finally{if(e===epoch){busy=false;draw();}}
+  }
+  async function retry(){
+    if(!pending)return;
+    const p=pending;
+    try{
+      const data=await api('/thread/'+p.kind,'POST',p.body);accept(data);
+      if(p.kind==='messages')draft='';
+      pending=null;persist();
+    }catch(error){
+      if(error.code===409){pending=null;persist();await openThread();throw Error('Chat was updated elsewhere. Check the latest messages, then send your draft again.');}
+      throw error;
+    }
+  }
+  function act(kind){return run(async()=>{
+    if(!snapshot)throw Error('Reconnect to Bee first.');
+    if(pending)throw Error('Retry the pending action first.');
+    const body={requestId:crypto.randomUUID(),expectedRevision:snapshot.revision};
+    if(kind==='messages'){if(!draft.trim()||draft.trim().length>500)throw Error('Use 1–500 characters.');body.text=draft.trim();}
+    pending={kind,body};persist();await retry();
+  });}
+  function button(parent,label,fn,disabled=false){const b=node('button',label);b.type='button';b.disabled=busy||disabled;b.onclick=fn;parent.append(b);return b;}
+  function bubble(parent,m){if(!String(m.text||'').trim())return;const row=node('div');row.className='im-row '+(m.role==='learner'?'mine':'bee');if(m.kind==='feedback')row.classList.add('im-feedback');const b=node('div',m.text);b.className='im-bubble';b.setAttribute('aria-label',m.role==='learner'?'You':'Bee');row.append(b);parent.append(row);}
+  function gate(){
+    const c=node('section');c.id='chat-preference';c.className='card';c.append(node('h2','Chat'));
+    const label=node('label'),check=node('input');check.type='checkbox';check.checked=enabled;
+    check.onchange=()=>{enabled=check.checked;try{localStorage.setItem(PREF,String(enabled));}catch(_){}if(!enabled){persist();cancel();if(view==='chat')go('settings');}else{failed=false;restore();}renderTabs();refresh();};
+    label.append(check,document.createTextNode(' I confirm that I am a legal adult and agree to Google’s policies stated '));
+    const terms=node('a','here');terms.href='https://ai.google.dev/gemini-api/terms';terms.target='_blank';terms.rel='noopener';label.append(terms,document.createTextNode('.'));
+    const privacy=node('a','DUOLIBEE’s chat data-use notice');privacy.href='chat-privacy.html';
+    c.append(label,node('p','Chat uses Google Gemini. It is not available in the European Economic Area, Switzerland, or the United Kingdom under the current free service. Use fictional details only.'),privacy,node('p','Your continuous chat history is stored on the chat server for your account. You can erase this thread from Chat. Older legacy conversations remain separate stored records; erasing the thread does not delete those original records or backups. Unticking Chat hides it without erasing history.'));
+    return c;
+  }
+  function draw(){
+    if(view!=='chat')return;
+    if(!enabled){go('settings');return;}
+    const c=node('section');c.className='im-shell im-thread';
+    const header=node('header');header.className='im-header';header.append(node('h2','🐝 Bee'),node('small','Tagalog practice · one ongoing conversation'));c.append(header);
+    if(notice){const status=node('p',notice);status.setAttribute('role','status');c.append(status);}
+    if(!token()){c.append(node('p','Sign in in Settings and Bee will start chatting here.'));button(c,'Settings',()=>go('settings'));app.replaceChildren(c);return;}
+    const log=node('div');log.className='im-log';log.setAttribute('aria-label','Conversation with Bee');
+    if(hasOlder&&messages.length)button(log,'Earlier messages',()=>run(async()=>{
+      const previous=app.querySelector('.im-log')?.scrollHeight||log.scrollHeight;
+      accept(await api('/thread/history?before='+messages[0].eventId),true);
+      olderAnchor=previous;
+    }));
+    messages.forEach(m=>bubble(log,m));
+    if(busy){const status=node('p',pending?.kind==='messages'?'Bee is replying…':'Connecting to Bee…');status.setAttribute('role','status');log.append(status);}
+    c.append(log);
+    if(snapshot){
+      const form=node('form');form.className='im-composer';const input=node('textarea');input.rows=2;input.maxLength=500;input.value=draft;input.placeholder='Message Bee in Tagalog or Taglish…';input.setAttribute('aria-label','Message Bee');input.disabled=busy||!!pending;
+      input.oninput=()=>{draft=input.value;persist();};form.append(input);
+      button(form,'Send',()=>act('messages'),!!pending).className='primary';
+      button(form,'Help me',()=>act('hint'),!!pending);
+      form.onsubmit=e=>{e.preventDefault();act('messages');};c.append(form);
+      const options=node('details');options.append(node('summary','Chat controls'));
+      button(options,'Finish this practice',()=>act('end'),!!pending);
+      button(options,'Reconnect',()=>run(openThread),!!pending);
+      button(options,'Erase this thread',()=>{
+        if(!confirm('Erase this continuous transcript and its current practice from the live server? Imported legacy originals, backups and provider records are separate.'))return;
+        run(async()=>{await api('/thread','DELETE');snapshot=null;messages=[];hasOlder=false;pending=null;draft='';persist();await openThread();});
+      },!!pending);c.append(options);
+    }
+    if(pending)button(c,'Retry sending',()=>run(retry));
+    else if(failed)button(c,'Reconnect to Bee',()=>run(openThread));
+    app.replaceChildren(c);log.scrollTop=olderAnchor===null?log.scrollHeight:Math.max(0,log.scrollHeight-olderAnchor);olderAnchor=null;
+    if(!snapshot&&!busy&&!failed)queueMicrotask(()=>{if(view==='chat'&&!snapshot&&!busy&&!failed)run(async()=>{await openThread();if(pending)await retry();});});
+  }
+  function refresh(){if(view==='chat')draw();if(view==='settings'){document.getElementById('chat-preference')?.remove();app.append(gate());}}
+  const oldTabs=renderTabs;renderTabs=function(){oldTabs();document.getElementById('tab-chat')?.classList.toggle('active',view==='chat');document.getElementById('tab-profile')?.remove();};
+  const oldGo=go;go=function(n,...args){if(n==='profile')n='practice';if(n!=='chat')return oldGo(n,...args);if(!enabled)return oldGo('settings');oldGo('practice');view='chat';failed=false;renderTabs();draw();};
+  const oldSettings=renderSettings;renderSettings=function(){oldSettings();app.append(gate());};
+  const oldPractice=renderPractice;renderPractice=function(){oldPractice();const c=node('section');c.className='card';c.append(node('h2','Your progress'),node('p',Object.keys(state.completed||{}).length+' lessons · '+Object.keys(state.srs||{}).length+' review items · '+(state.streak||0)+' day streak · '+(state.xp||0)+' XP'));app.prepend(c);};
+  window.addEventListener('duolibee-account',()=>{const next=owner();if(next!==activeOwner){cancel();activeOwner=next;restore();}else failed=false;refresh();});
+  window.addEventListener('storage',event=>{if(event.key===PREF){enabled=event.newValue==='true';if(!enabled){cancel();if(view==='chat')go('settings');}else{failed=false;restore();}renderTabs();refresh();}});
+  renderTabs();refresh();
 })();
