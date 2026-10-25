@@ -1,0 +1,1 @@
+[CORRECTED INTEGRATION TESTS: controlled evaluator now returns (decision, {'usageMetadata': {}}); tests greeting answer-before-close, off-topic no goal credit, malformed model decision fails closed without state change, and identical request-ID replay returns cached result with exactly one evaluator call.]

@@ -1,0 +1,1 @@
+[CORRECTED RELEASE NOTE: all 100 numbered missions use conversational dialogue; language quality separated from task relevance; legacy activity and security/quota boundaries preserved; corrected evaluator and renderer regressions tested; live Gemini browser verification still required after VM deployment.]
