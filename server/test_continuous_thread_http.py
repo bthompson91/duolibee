@@ -24,7 +24,7 @@ class ContinuousThreadHTTPTests(unittest.TestCase):
         s=self.open();body=dict(requestId='once',expectedRevision=s['revision'],text='Okay lang')
         r=self.client.post('/thread/messages',json=body,headers=self.h)
         self.assertEqual(r.status_code,200)
-        data=r.get_json();self.assertEqual(data['lesson'],2)
+        data=r.get_json();self.assertEqual(data['lesson'],5)
         self.assertEqual(data['messages'][-2]['kind'],'feedback')
         replay=self.client.post('/thread/messages',json=body,headers=self.h)
         self.assertEqual(replay.get_json(),data);self.assertEqual(self.calls,1)
@@ -44,7 +44,7 @@ class ContinuousThreadHTTPTests(unittest.TestCase):
         self.assertEqual(r.status_code,200);data=r.get_json()
         self.assertEqual(data['messages'][-1]['kind'],'hint')
         r=self.client.post('/thread/end',json=dict(requestId='end',expectedRevision=data['revision']),headers=self.h)
-        self.assertEqual(r.status_code,200);self.assertEqual(r.get_json()['lesson'],2)
+        self.assertEqual(r.status_code,200);self.assertEqual(r.get_json()['lesson'],5)
         self.assertEqual(r.get_json()['messages'][-2]['kind'],'feedback')
     def test_delete_and_reopen(self):
         self.open();r=self.client.delete('/thread',headers=self.h)

@@ -100,13 +100,15 @@
     if(busy){const status=node('p',pending?.kind==='messages'?'Bee is replying…':'Connecting to Bee…');status.setAttribute('role','status');log.append(status);}
     c.append(log);
     if(snapshot){
+      if(snapshot.status==='active'){
       const form=node('form');form.className='im-composer';const input=node('textarea');input.rows=2;input.maxLength=500;input.value=draft;input.placeholder='Message Bee in Tagalog or Taglish…';input.setAttribute('aria-label','Message Bee');input.disabled=busy||!!pending;
       input.oninput=()=>{draft=input.value;persist();};form.append(input);
       button(form,'Send',()=>act('messages'),!!pending).className='primary';
       button(form,'Help me',()=>act('hint'),!!pending);
       form.onsubmit=e=>{e.preventDefault();act('messages');};c.append(form);
+      }
       const options=node('details');options.append(node('summary','Chat controls'));
-      button(options,'Finish this practice',()=>act('end'),!!pending);
+      if(snapshot.status==='active')button(options,'Skip this question',()=>act('end'),!!pending);
       button(options,'Reconnect',()=>run(openThread),!!pending);
       button(options,'Erase this thread',()=>{
         if(!confirm('Erase this continuous transcript and its current practice from the live server? Imported legacy originals, backups and provider records are separate.'))return;

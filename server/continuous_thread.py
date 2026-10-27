@@ -237,7 +237,8 @@ class BeeThreadStore:
 
 def register_thread_routes(app,db_path,catalog,vocabulary,public):
     from flask import g,jsonify,request
-    store=BeeThreadStore(db_path,catalog,vocabulary)
+    from once_progression import OneAnswerStore
+    store=OneAnswerStore(db_path,catalog,vocabulary)
     owner=lambda:g.subject if public else 'private-local'
     def invoke(sid,kind,body):
         response=app.make_response(app.view_functions['action'](sid,kind))
