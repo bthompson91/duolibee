@@ -38,12 +38,9 @@
     }
     return words;
   }
+  const baseSeededShuffle = seededShuffle;
   seededShuffle = function(values, seed) {
-    const shuffled = values.slice();
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
+    const shuffled = baseSeededShuffle(values, seed);
     const exercise = typeof session !== 'undefined' && session && session.exercises && session.exercises[index];
     if (exercise && exercise.type === 'build' && values === exercise.words) return unsolve(shuffled, exercise.answer);
     return shuffled;
