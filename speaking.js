@@ -50,6 +50,10 @@
     const ua = userAgent();
     return /iPad|iPhone|iPod/.test(ua) || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   }
+  function isStandaloneWebApp() {
+    // iOS only: true when the site was launched from a Home Screen icon.
+    return typeof navigator !== 'undefined' && navigator.standalone === true;
+  }
   function isInAppBrowser() {
     // On iOS every browser uses WebKit, but only Safari itself offers the
     // speech recognition service. In-app browsers run in a plain webview:
@@ -218,6 +222,15 @@
       swapToWritten('Speaking isn’t supported in this browser, so this became a written question. No penalty.');
       return;
     }
+    if (isStandaloneWebApp()) {
+      // A Home Screen app runs in a Safari view, not in Safari itself,
+      // and the speech service is not offered there — even though the
+      // microphone permission works. Say so plainly instead of offering
+      // a microphone that can never work in this context.
+      speechUnavailable = true;
+      swapToWritten('You’re using duolibee from the Home Screen, which runs it in a Safari view that doesn’t offer speech recognition. Open duolibee in the Safari app itself to use speaking — this became a written question instead. No penalty.');
+      return;
+    }
     if (isInAppBrowser()) {
       // No code can enable the service in a plain webview; say so plainly
       // instead of offering a microphone that can never work.
@@ -272,7 +285,9 @@
     }
     originalRender();
   };
-  // Exposed for tests and for other tools that need the matcher.
+  // Exposed for tests: the matcher, and the environment detection that
+  // decides whether speaking can work at all in this browser context.
+  window.duolibeeSpeakingEnv = { isIOS, isInAppBrowser, isStandaloneWebApp };
   window.speakAccepted = speakAccepted;
   window.speakSimilarity = speakSimilarity;
   window.speakSupported = speakSupported;

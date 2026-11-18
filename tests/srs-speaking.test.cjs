@@ -475,6 +475,38 @@ for (const f of order) {
   console.log('later speak exercise after terminal failure:', JSON.stringify(later));
   assert.strictEqual(later.type, 'choice', 'a later speak exercise must auto-swap once the service has failed');
 
+
+  // ---- Environment detection: Home Screen app, in-app browser, Safari ----
+  const envTests = vm.runInContext(`
+    (function () {
+      const env = window.duolibeeSpeakingEnv;
+      const out = {};
+      navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Mobile/15E148 Safari/604.1';
+      navigator.standalone = false;
+      out.safari = { ios: env.isIOS(), inApp: env.isInAppBrowser(), standalone: env.isStandaloneWebApp() };
+      navigator.standalone = true;
+      out.homeScreen = { ios: env.isIOS(), inApp: env.isInAppBrowser(), standalone: env.isStandaloneWebApp() };
+      navigator.standalone = false;
+      navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+      out.webview = { ios: env.isIOS(), inApp: env.isInAppBrowser(), standalone: env.isStandaloneWebApp() };
+      navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/140.0.0.0 Mobile/15E148 Safari/604.1';
+      out.chromeIOS = { ios: env.isIOS(), inApp: env.isInAppBrowser(), standalone: env.isStandaloneWebApp() };
+      navigator.userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+      out.desktop = { ios: env.isIOS(), inApp: env.isInAppBrowser(), standalone: env.isStandaloneWebApp() };
+      navigator.userAgent = '';
+      return out;
+    })()
+  `, sandbox);
+  console.log('environment detection:', JSON.stringify(envTests));
+  assert.strictEqual(envTests.safari.ios, true, 'Safari on iPhone is iOS');
+  assert.strictEqual(envTests.safari.inApp, false, 'Safari itself is not an in-app browser');
+  assert.strictEqual(envTests.safari.standalone, false, 'Safari itself is not a Home Screen app');
+  assert.strictEqual(envTests.homeScreen.standalone, true, 'a Home Screen launch must be detected');
+  assert.strictEqual(envTests.webview.inApp, true, 'a plain webview (no Safari token) is an in-app browser');
+  assert.strictEqual(envTests.chromeIOS.inApp, true, 'Chrome on iOS is a webview, not Safari');
+  assert.strictEqual(envTests.desktop.ios, false, 'desktop Chrome is not iOS');
+  assert.strictEqual(envTests.desktop.inApp, false, 'desktop Chrome is not an in-app browser');
+
   console.log('FULL-CHAIN: PASS');
   process.exit(0); // scripts register intervals; exit explicitly on success
   if (loadFailures.length) console.log('note: some non-core scripts failed to load in the vm:', loadFailures.join(' | '));
