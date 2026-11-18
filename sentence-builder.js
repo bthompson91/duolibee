@@ -42,14 +42,17 @@
         answer: sentence.t,
         seed: lesson.id * 977 + words.length
       });
-      // Speak the sentence you just built: a second speaking exercise right
-      // after the build, same sentence, no SRS key (sentences are practice,
-      // like the build itself). It reuses the speak UI and flow.
+      // Speak a DIFFERENT sentence from the same theme: the build uses
+      // sentences[(id - 1) % n], so the speak takes the next one in the
+      // cycle, sentences[id % n] — always a different sentence (each theme
+      // has 3), so it tests transfer, not just recall of the one just built.
+      // Reuses the speak UI and flow; no SRS key (sentences are practice).
+      const speakSentence = sentences[lesson.id % sentences.length];
       const at = lesson.exercises.indexOf(target);
       if (at >= 0) lesson.exercises.splice(at + 1, 0, {
         type: 'speak', sentence: true, srsKeys: [],
-        prompt: 'Say this aloud: ' + sentence.t,
-        item: { t: sentence.t, e: sentence.e }
+        prompt: 'Say this aloud: ' + speakSentence.t,
+        item: { t: speakSentence.t, e: speakSentence.e }
       });
     });
     return lessons;

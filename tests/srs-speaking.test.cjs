@@ -136,7 +136,7 @@ for (const f of order) {
       out.sentenceSpeakCount = LESSONS.flatMap(l => l.exercises.filter(e => e.sentence)).length;
       out.sentenceSpeakAfterBuild = LESSONS.every(l => { const b = l.exercises.findIndex(e => e.type === 'build'); return b >= 0 && l.exercises[b + 1] && l.exercises[b + 1].sentence === true; });
       out.sentenceSpeakKeys = LESSONS.flatMap(l => l.exercises.filter(e => e.sentence)).map(e => (e.srsKeys || []).length);
-      out.sentenceMatchesBuild = LESSONS.every(l => { const b = l.exercises.find(e => e.type === 'build'); const s = l.exercises.find(e => e.sentence); return b && s && s.item.t === b.answer; });
+      out.sentenceDiffersFromBuild = LESSONS.every(l => { const b = l.exercises.find(e => e.type === 'build'); const s = l.exercises.find(e => e.sentence); return b && s && s.item.t !== b.answer; });
       return out;
     })()
   `;
@@ -151,7 +151,7 @@ for (const f of order) {
   assert.strictEqual(info.sentenceSpeakCount, 100, 'one sentence speak per lesson');
   assert.ok(info.sentenceSpeakAfterBuild, 'sentence speak follows the build exercise');
   assert.ok(info.sentenceSpeakKeys.every((n) => n === 0), 'sentence speaks carry no single-item key');
-  assert.ok(info.sentenceMatchesBuild, 'sentence speak uses the build sentence');
+  assert.ok(info.sentenceDiffersFromBuild, 'sentence speak uses a different sentence than the build');
 
   // ---- Play lesson 1: the translate exercise wrong on first try, everything else right ----
   // (the sentence build is answered right, so the only first-try failure is a
