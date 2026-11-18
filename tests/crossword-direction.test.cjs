@@ -1,6 +1,6 @@
-// Throwaway check for the crossword direction indicator + intersection toggle.
+// Check for the crossword direction indicator + intersection toggle + backspace.
 // Loads only daily-crossword.js in a vm with a minimal DOM stub that can parse
-// the grid HTML the crossword renders. Run: node /tmp/crossword-direction.test.cjs
+// the grid HTML the crossword renders. Run: node tests/crossword-direction.test.cjs
 // Exit 0 = pass, 1 = fail.
 const fs = require('fs');
 const vm = require('vm');
@@ -284,6 +284,48 @@ const before = sandbox.duolibeeCrossword.active();
 sCell.onmousedown();
 assert.strictEqual(sandbox.duolibeeCrossword.active(), before, 're-tap on a non-intersection does not change direction');
 console.log('5. re-tap on a non-intersection cell does not toggle: OK');
+
+// 6. Backspace in the Across direction moves left
+// (a1 = the cell right of the intersection in the Across word; it exists
+// because the intersection is not the last letter of the Across word)
+cell.focus();
+const j = target.c - target.h.c;
+const a1 = cellAt(target.h.r, target.c + 1);
+assert.ok(a1, 'cell after the intersection in the Across word exists');
+assert.strictEqual(typeof a1.onkeydown, 'function', 'cell has a backspace handler');
+a1.value = target.h.answer[j + 1];
+a1.oninput();
+a1.focus();
+a1.onkeydown({ key: 'Backspace', preventDefault: () => {} });
+assert.strictEqual(a1.value, '', 'backspace on a filled cell clears it');
+assert.strictEqual(document.activeElement, cell, 'backspace on a filled cell moves left to the previous cell');
+// backspace on an empty cell moves left and clears the previous cell
+a1.focus();
+a1.onkeydown({ key: 'Backspace', preventDefault: () => {} });
+assert.strictEqual(cell.value, '', 'backspace on an empty cell clears the previous cell');
+assert.strictEqual(document.activeElement, cell, 'backspace on an empty cell moves left');
+console.log('6. backspace in the Across direction moves left and deletes: OK');
+
+// 7. Backspace in the Down direction moves up
+cell.focus();
+cell.onmousedown();
+assert.strictEqual(sandbox.duolibeeCrossword.active(), target.v, 'flipped to Down for the backspace test');
+const k = target.r - target.v.r;
+const d1 = cellAt(target.r + 1, target.c);
+assert.ok(d1, 'cell below the intersection in the Down word exists');
+cell.value = target.v.answer[k];
+cell.oninput();
+d1.value = target.v.answer[k + 1];
+d1.oninput();
+d1.focus();
+d1.onkeydown({ key: 'Backspace', preventDefault: () => {} });
+assert.strictEqual(d1.value, '', 'backspace on a filled cell clears it (Down)');
+assert.strictEqual(document.activeElement, cell, 'backspace on a filled cell moves up to the previous cell');
+d1.focus();
+d1.onkeydown({ key: 'Backspace', preventDefault: () => {} });
+assert.strictEqual(cell.value, '', 'backspace on an empty cell clears the previous cell (Down)');
+assert.strictEqual(document.activeElement, cell, 'backspace on an empty cell moves up');
+console.log('7. backspace in the Down direction moves up and deletes: OK');
 
 console.log('CROSSWORD DIRECTION: PASS');
 process.exit(0);
