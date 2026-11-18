@@ -5,6 +5,8 @@ import base64, hashlib, hmac, json, os, re, secrets, sqlite3, threading, time, u
 import requests
 from flask import Flask, jsonify, request, g
 from conversation import DialogueError, apply_decision, response_schema, validate_decision
+import logging
+log=logging.getLogger(__name__)
 VERSION=Path(__file__).with_name('VERSION').read_text(encoding='utf-8').strip()
 BEE_POLICY=Path(__file__).with_name('bee-policy.txt').read_text(encoding='utf-8')
 CONVERSATION_POLICY=Path(__file__).with_name('conversation-policy.txt').read_text(encoding='utf-8')
@@ -66,12 +68,12 @@ def evaluate(key_path,text,state,mission,missions):
 AUDIO_MIME_TYPES={'audio/mp4','audio/mpeg','audio/webm','audio/wav','audio/x-wav','audio/ogg','audio/aac'}
 TRANSCRIBE_MAX_BYTES=512*1024
 def transcribe_audio(key_path,audio_bytes,mime_type):
-    payload={'contents':[{'parts':[{'text':'Transcribe this Tagalog speech exactly. Return only the transcription, with no extra words or explanation.'},{'inlineData':{'mimeType':mime_type,'data':base64.b64encode(audio_bytes).decode()}}]}],'generationConfig':{'maxOutputTokens':256,'responseMimeType':'application/json','responseSchema':{'type':'object','additionalProperties':False,'required':['transcript'],'properties':{'transcript':{'type':'string'}}}}}
+    payload={'contents':[{'parts':[{'text':'Transcribe this Tagalog speech exactly. Return only the transcription, with no extra words or explanation.'},{'inlineData':{'mimeType':mime_type,'data':base64.b64encode(audio_bytes).decode()}}]}],'generationConfig':{'maxOutputTokens':256,'thinkingConfig':{'thinkingLevel':'low'},'responseFormat':{'text':{'mimeType':'APPLICATION_JSON','schema':{'type':'object','additionalProperties':False,'required':['transcript'],'properties':{'transcript':{'type':'string'}}}}}}}
     try:
         key=key_path.read_text().strip()
         r=requests.post('https://generativelanguage.googleapis.com/v1beta/models/'+MODEL+':generateContent',headers={'x-goog-api-key':key},json=payload,timeout=(5,60))
         if r.status_code==429:raise ProviderError('quota_or_rate_limit')
-        if not r.ok:raise ProviderError('provider_error')
+        if not r.ok:log.warning('transcribe provider error status=%s body=%s',r.status_code,r.text[:500]);raise ProviderError('provider_error')
         data=r.json();candidates=data.get('candidates',[])
         if len(candidates)!=1 or candidates[0].get('finishReason')!='STOP':raise InvalidAssessment('incomplete')
         raw=''.join(p.get('text','') for p in candidates[0].get('content',{}).get('parts',[]) if not p.get('thought'))

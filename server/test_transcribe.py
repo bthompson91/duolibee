@@ -1,5 +1,7 @@
 import json, sqlite3, tempfile, unittest
 from pathlib import Path
+from unittest import mock
+import chat_app
 from chat_app import ProviderError, create_app
 ROOT=Path(__file__).resolve().parents[1]
 AUDIO=b'\x00\x01\x02\x03'
@@ -40,6 +42,20 @@ class TranscribeTests(unittest.TestCase):
         c=self.fresh_client(boom)
         r=c.post('/transcribe',data=AUDIO,content_type='audio/mp4',headers=self.h)
         self.assertEqual(r.status_code,502);self.assertEqual(r.get_json()['error'],'provider_error')
+    def test_transcribe_request_uses_response_format(self):
+        payloads=[]
+        class Resp:
+            status_code=200;ok=True
+            def json(self):return {'candidates':[{'finishReason':'STOP','content':{'parts':[{'text':'{"transcript": "Kumusta"}'}]}}]}
+        def fake_post(url,headers=None,json=None,timeout=None):
+            payloads.append(json);return Resp()
+        key=Path(self.tmp.name)/'key.txt';key.write_text('dummy-key')
+        with mock.patch.object(chat_app.requests,'post',fake_post):
+            self.assertEqual(chat_app.transcribe_audio(key,b'\x00\x01','audio/mp4'),'Kumusta')
+        self.assertEqual(len(payloads),1)
+        gen=payloads[0]['generationConfig']
+        self.assertNotIn('responseSchema',gen);self.assertNotIn('responseMimeType',gen)
+        self.assertEqual(gen['responseFormat'],{'text':{'mimeType':'APPLICATION_JSON','schema':{'type':'object','additionalProperties':False,'required':['transcript'],'properties':{'transcript':{'type':'string'}}}}})
     def test_audio_is_not_persisted(self):
         self.assertEqual(self.post().status_code,200)
         with sqlite3.connect(Path(self.tmp.name)/'chat.sqlite3') as db:

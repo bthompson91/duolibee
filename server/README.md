@@ -1,4 +1,4 @@
-# Backend v0.37.0
+# Backend v0.37.1
 
 Update an existing Duolibee VM after this commit is published:
 
