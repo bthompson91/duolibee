@@ -298,6 +298,91 @@ for (const f of order) {
   assert.strictEqual(fallback.type, 'choice');
   assert.strictEqual(fallback.kept, true, 'fallback must keep srsKeys');
 
+
+  // ---- Speech recognition errors: terminal ones auto-swap, network does not ----
+  vm.runInContext(`
+    window.__fakeError = 'network';
+    window.webkitSpeechRecognition = class {
+      constructor() {}
+      abort() {}
+      start() {
+        const err = window.__fakeError || 'network';
+        const self = this;
+        setTimeout(() => {
+          if (self.onerror) self.onerror({ error: err });
+          if (self.onend) self.onend();
+        }, 0);
+      }
+    };
+  `, sandbox);
+  const notes = [];
+  vm.runInContext(`
+    (function () {
+      const card = { prepend: (p) => { window.__notes = window.__notes || []; window.__notes.push(p.textContent); }, append: () => {} };
+      app.querySelector = () => card;
+    })()
+  `, sandbox);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // C. 'network' is retryable: the exercise stays a speak exercise.
+  const net = vm.runInContext(`
+    (function () {
+      window.__fakeError = 'network';
+      session = LESSONS.find(l => l.id === 5); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx, type: session.exercises[idx].type };
+    })()
+  `, sandbox);
+  await sleep(60);
+  const netAfter = vm.runInContext(`
+    (function () {
+      return {
+        type: session.exercises[index].type,
+        status: document.getElementById('speak-status').textContent,
+      };
+    })()
+  `, sandbox);
+  console.log('network error:', JSON.stringify(netAfter));
+  assert.strictEqual(netAfter.type, 'speak', 'a network error must not swap the exercise');
+  assert.ok(/connection/i.test(netAfter.status), 'network error should mention the connection, got: ' + netAfter.status);
+
+  // A. 'service-not-allowed' is terminal: auto-swap to a written question with an explanation.
+  const svc = vm.runInContext(`
+    (function () {
+      window.__fakeError = 'service-not-allowed';
+      window.__notes = [];
+      session = LESSONS.find(l => l.id === 3); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx };
+    })()
+  `, sandbox);
+  await sleep(60);
+  const svcAfter = vm.runInContext(`
+    (function () {
+      return { type: session.exercises[index].type, notes: window.__notes || [] };
+    })()
+  `, sandbox);
+  console.log('service-not-allowed:', JSON.stringify(svcAfter));
+  assert.strictEqual(svcAfter.type, 'choice', 'service-not-allowed must auto-swap to a written question');
+  assert.ok(svcAfter.notes.some((n) => /isn.t available/.test(n) && /written question/.test(n)),
+    'swap must explain why, got notes: ' + JSON.stringify(svcAfter.notes));
+
+  // B. Later speak exercises in the same session auto-swap at render time.
+  const later = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 4); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      index = idx; renderExercise();
+      return { type: session.exercises[idx].type };
+    })()
+  `, sandbox);
+  console.log('later speak exercise after terminal failure:', JSON.stringify(later));
+  assert.strictEqual(later.type, 'choice', 'a later speak exercise must auto-swap once the service has failed');
+
   console.log('FULL-CHAIN: PASS');
   process.exit(0); // scripts register intervals; exit explicitly on success
   if (loadFailures.length) console.log('note: some non-core scripts failed to load in the vm:', loadFailures.join(' | '));

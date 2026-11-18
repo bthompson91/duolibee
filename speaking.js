@@ -5,10 +5,21 @@
 // browser's own speech recognition (fil-PH) with generous matching, because
 // recognition is imperfect — especially for learners. Nothing is graded
 // until the learner taps Check, so a bad recognition pass can be re-tried.
-// If recognition is unavailable or the microphone is denied, the exercise
-// can be swapped for a written question with no penalty, like the audio
-// exercises already do. Speaking can also be switched off in Settings,
-// in which case speak exercises become written questions at render time.
+//
+// Some failures are terminal and retrying cannot help, so they are not
+// presented as "try again":
+//   - 'service-not-allowed': the recognition service itself is unavailable
+//     in this browser on this device. On iPhones it needs Siri turned on,
+//     and it does not work in some in-app browsers (WKWebView). The
+//     exercise becomes a written question, and later speak exercises in
+//     the same session do the same, so the lesson never dead-ends.
+//   - 'not-allowed' (microphone denied) and 'audio-capture' (no microphone):
+//     this exercise becomes a written question; the next speak exercise
+//     still offers the microphone, in case the permission is fixed.
+//   - 'network' and 'no-speech': retryable — the learner is asked to try
+//     the microphone again.
+// Speaking can also be switched off in Settings, in which case speak
+// exercises become written questions at render time.
 //
 // Audio never leaves the device except to the browser's speech-recognition
 // service, if the browser uses one. No recording is stored by DUOLIBEE.
@@ -57,16 +68,45 @@
   }
   function setHeard(text) {
     const el = document.getElementById('speak-heard');
-    if (el) el.textContent = text ? 'I heard: \u201c' + text + '\u201d' : '';
+    if (el) el.textContent = text ? 'I heard: “' + text + '”' : '';
   }
+  // Set once a terminal service failure happens; in-memory only, so reloading
+  // the page gives speaking another chance (for example after Siri is turned
+  // on or the browser is changed).
+  let speechUnavailable = false;
   let recognizer = null;
+  function writtenQuestionFor(ex) {
+    const options = seededShuffle([...new Set([ex.item.e, ...distractors(ex.item)])], index + 201);
+    return { type: 'choice', prompt: 'What does “' + ex.item.t + '” mean?', options, answer: options.indexOf(ex.item.e), srsKeys: ex.srsKeys };
+  }
+  // Swap the current speak exercise for a written question and explain why.
+  // The note is added after rendering: the speak UI (and its status line)
+  // is gone once the exercise is a choice question.
+  function swapToWritten(message) {
+    const ex = session && session.exercises && session.exercises[index];
+    if (!ex || ex.type !== 'speak' || session._answeredIndex === index) return false;
+    session.exercises[index] = writtenQuestionFor(ex);
+    renderExercise();
+    if (message) {
+      const card = app.querySelector('.card');
+      if (card) {
+        const note = document.createElement('p');
+        note.className = 'speak-note';
+        note.setAttribute('role', 'status');
+        note.textContent = message;
+        card.prepend(note);
+      }
+    }
+    return true;
+  }
   startSpeaking = function () {
     const ex = session && session.exercises && session.exercises[index];
     if (!ex || ex.type !== 'speak') return;
     if (session._answeredIndex === index) return;
     const Recog = recognitionClass();
     if (!Recog) {
-      setStatus('Speaking is not supported in this browser. Use a written question instead.');
+      speechUnavailable = true;
+      swapToWritten('Speaking isn’t supported in this browser, so this became a written question. No penalty.');
       return;
     }
     try { if (recognizer) recognizer.abort(); } catch (e) { /* already stopped */ }
@@ -75,22 +115,34 @@
     rec.lang = 'fil-PH';
     rec.interimResults = false;
     rec.maxAlternatives = 3;
-    setStatus('Listening\u2026 say it now.');
+    let attemptFailed = false;
+    setStatus('Listening… say it now.');
     rec.onresult = (event) => {
       const result = event.results && event.results[0];
       const best = result && result[0];
       const text = best ? best.transcript : '';
       session.speakHeard = text;
       setHeard(text);
-      setStatus(text ? 'Tap \u201cCheck my pronunciation\u201d when you are ready.' : 'Didn\u2019t catch that \u2014 tap the microphone and try again.');
+      setStatus(text ? 'Tap “Check my pronunciation” when you are ready.' : 'Didn’t catch that — tap the microphone and try again.');
     };
     rec.onerror = (event) => {
-      setStatus(event.error === 'not-allowed'
-        ? 'Microphone access was denied. Allow the microphone, or use a written question instead.'
-        : 'Speech recognition had a problem (' + event.error + '). Try again, or use a written question instead.');
+      attemptFailed = true;
+      const err = (event && event.error) || '';
+      if (err === 'service-not-allowed' || err === 'language-not-supported') {
+        speechUnavailable = true;
+        swapToWritten('Speech recognition isn’t available in this browser on this device — on iPhones it needs Siri turned on, and it doesn’t work in some in-app browsers. This became a written question instead. No penalty.');
+      } else if (err === 'not-allowed') {
+        swapToWritten('Microphone access was denied, so this became a written question. No penalty — allow the microphone in your browser settings and the next speaking question will offer the microphone again.');
+      } else if (err === 'audio-capture') {
+        swapToWritten('No microphone was found, so this became a written question. No penalty.');
+      } else if (err === 'network') {
+        setStatus('Couldn’t reach the speech recognition service — check your connection and tap the microphone to try again.');
+      } else {
+        setStatus('Speech recognition had a problem (' + err + '). Tap the microphone to try again, or use a written question instead.');
+      }
     };
     rec.onend = () => {
-      if (!session.speakHeard) setStatus('Didn\u2019t catch that \u2014 tap the microphone and try again.');
+      if (!attemptFailed && !session.speakHeard) setStatus('Didn’t catch that — tap the microphone and try again.');
     };
     try { rec.start(); } catch (e) { setStatus('Could not start listening: ' + e.message); }
   };
@@ -105,18 +157,10 @@
     session._answeredIndex = index;
     const ok = speakAccepted(session.speakHeard, ex.item);
     if (ok) correct++;
-    feedback(ok, ok ? 'Tama! Well spoken!' : 'I heard \u201c' + session.speakHeard + '\u201d. Correct: ' + ex.item.t);
+    feedback(ok, ok ? 'Tama! Well spoken!' : 'I heard “' + session.speakHeard + '”. Correct: ' + ex.item.t);
   };
-  function writtenQuestionFor(ex) {
-    const options = seededShuffle([...new Set([ex.item.e, ...distractors(ex.item)])], index + 201);
-    return { type: 'choice', prompt: 'What does \u201c' + ex.item.t + '\u201d mean?', options, answer: options.indexOf(ex.item.e), srsKeys: ex.srsKeys };
-  }
   replaceSpeakWithChoice = function () {
-    const ex = session && session.exercises && session.exercises[index];
-    if (!ex || ex.type !== 'speak' || session._answeredIndex === index) return;
-    session.exercises[index] = writtenQuestionFor(ex);
-    renderExercise();
-    setStatus('Speaking question replaced with a written question. No penalty.');
+    swapToWritten('Speaking question replaced with a written question. No penalty.');
   };
   // Settings toggle: speaking defaults to on. Switching it off swaps speak
   // exercises for written questions at render time, like muting does audio.
@@ -138,7 +182,7 @@
   const originalRender = renderExercise;
   renderExercise = function () {
     const ex = session && session.exercises && session.exercises[index];
-    if (ex && ex.type === 'speak' && state.settings.speaking === false) {
+    if (ex && ex.type === 'speak' && (state.settings.speaking === false || speechUnavailable)) {
       session.exercises[index] = writtenQuestionFor(ex);
     }
     originalRender();
