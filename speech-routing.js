@@ -17,16 +17,23 @@
   };
   const settings=renderSettings;
   renderSettings=function(){settings();const p=document.createElement('p'),v=window.speechSynthesis?voice():null;p.textContent='Speech voice: '+(v?v.name+' ('+v.lang+')':'system default')+'. All voices receive original Tagalog unchanged.';app.prepend(p);const test=document.createElement('button');test.className='ghost';test.textContent='Test system voice';test.onclick=()=>{if(!window.speechSynthesis)return;serial++;clearTimeout(timer);speechSynthesis.cancel();speechSynthesis.resume();current=new SpeechSynthesisUtterance('Audio test.');current.onerror=e=>status('System voice error: '+e.error);speechSynthesis.speak(current);};app.append(test);};
+  // Replace the current audio exercise with a written choice. Kept as a
+  // named function (and exposed for tests) so the swap itself is drivable
+  // without the button. The replacement keeps the exercise's _origin/_retry:
+  // lesson-retries.js credits mastery by _origin, so a replacement without
+  // it can never be credited and the lesson can never finish.
+  function replaceAudioWithChoice(){
+    const ex=session&&session.exercises?session.exercises[index]:null;if(!ex||ex.type!=='audio'||session._answeredIndex===index)return false;
+    serial++;clearTimeout(timer);if(window.speechSynthesis)speechSynthesis.cancel();
+    const options=[ex.item.e,...distractors(ex.item)];const unique=[...new Set(options)];
+    session.exercises[index]={type:'choice',prompt:'Select the English for: '+ex.item.t,options:unique,answer:unique.indexOf(ex.item.e),srsKeys:ex.srsKeys,_origin:ex._origin,_retry:ex._retry};
+    renderExercise();status('Audio question replaced with a written question. No penalty.');return true;
+  }
+  window.duolibeeReplaceAudio=replaceAudioWithChoice;
   function addAudioHelp(){
     app.querySelectorAll('button.slow,button[onclick="testVoice(true)"]').forEach(b=>b.remove());
     if(typeof session==='undefined'||!session||!session.exercises[index]||session.exercises[index].type!=='audio'||document.getElementById('audio-help'))return;
-    const b=document.createElement('button');b.id='audio-help';b.className='ghost';b.textContent='I can’t hear this';b.onclick=()=>{
-      const ex=session.exercises[index];if(ex.type!=='audio'||session._answeredIndex===index)return;
-      serial++;clearTimeout(timer);if(window.speechSynthesis)speechSynthesis.cancel();
-      const options=[ex.item.e,...distractors(ex.item)];const unique=[...new Set(options)];
-      session.exercises[index]={type:'choice',prompt:'Select the English for: '+ex.item.t,options:unique,answer:unique.indexOf(ex.item.e),srsKeys:ex.srsKeys};
-      renderExercise();status('Audio question replaced with a written question. No penalty.');
-    };const card=app.querySelector('.card');if(card)card.append(b);
+    const b=document.createElement('button');b.id='audio-help';b.className='ghost';b.textContent='I can’t hear this';b.onclick=()=>{ replaceAudioWithChoice(); };const card=app.querySelector('.card');if(card)card.append(b);
   }
   document.addEventListener('click',event=>{
     const b=event.target.closest('button.option');if(!b||!app.contains(b)||!session||session._answeredIndex===index)return;

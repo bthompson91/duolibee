@@ -114,7 +114,11 @@
   const TRANSCRIBE_API = 'https://158-179-30-201.sslip.io/duolibee/chat/transcribe';
   function writtenQuestionFor(ex) {
     const options = seededShuffle([...new Set([ex.item.e, ...distractors(ex.item)])], index + 201);
-    return { type: 'choice', prompt: 'What does “' + ex.item.t + '” mean?', options, answer: options.indexOf(ex.item.e), srsKeys: ex.srsKeys };
+    // Keep the exercise's identity: lesson-retries.js credits mastery by
+    // _origin, so a replacement without it can never be credited and the
+    // lesson can never finish. _retry keeps a swapped retry from counting
+    // as a first attempt.
+    return { type: 'choice', prompt: 'What does “' + ex.item.t + '” mean?', options, answer: options.indexOf(ex.item.e), srsKeys: ex.srsKeys, _origin: ex._origin, _retry: ex._retry };
   }
   // Swap the current speak exercise for a written question and explain why.
   // The note is added after rendering: the speak UI (and its status line)
