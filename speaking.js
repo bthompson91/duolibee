@@ -1,42 +1,32 @@
 // DUOLIBEE speaking exercises.
 //
 // One 'speak' exercise per lesson: the learner hears the model (or reads the
-// Tagalog), taps the microphone, says it, and taps Check. Grading uses the
-// browser's own speech recognition with generous matching, because
-// recognition is imperfect — especially for learners. Nothing is graded
-// until the learner taps Check, so a bad recognition pass can be re-tried.
+// Tagalog), taps the microphone, says it, and taps Check. Grading uses
+// generous matching, because recognition is imperfect — especially for
+// learners. Nothing is graded until the learner taps Check, so a bad
+// recognition pass can be re-tried.
 //
-// The recognition service belongs to the browser/device, not to DUOLIBEE,
-// so when it cannot start the app tries to fix the cause before giving up:
-//   1. In-app browsers on iPhones run in a plain webview that does not
-//      offer the service at all. The app detects that and says so plainly
-//      (open the site in Safari), instead of offering a microphone that
-//      can never work.
-//   2. On iPhones, speech recognition sometimes needs the microphone
-//      permission granted first, as a separate permission from the speech
-//      prompt. On iOS the app requests the microphone via getUserMedia
-//      before starting recognition (desktop browsers skip this step).
-//   3. If the service rejects the language tag, the app retries with
-//      the other Tagalog tag, then with English as a last resort
-//      ('fil-PH', 'tl-PH', 'en-US').
-// Only when those are exhausted does the exercise become a written
-// question, with no penalty. Some failures are terminal and retrying
-// cannot help, so they are not presented as "try again":
-//   - 'service-not-allowed': the service is unavailable in this browser
-//     on this device (Siri off, in-app browser, or a browser policy).
-//     Later speak exercises in the same session become written questions
-//     too, so the lesson never dead-ends. Reloading gives speaking
-//     another chance.
-//   - 'not-allowed' (microphone denied) and 'audio-capture' (no mic):
-//     this exercise becomes a written question; the next speak exercise
-//     still offers the microphone, in case the permission is fixed.
-//   - 'network' and 'no-speech': retryable — the learner is asked to
-//     try the microphone again.
-// Speaking can also be switched off in Settings, in which case speak
-// exercises become written questions at render time.
+// Speaking is tried in this order, and the exercise only becomes a written
+// question when every path is exhausted:
+//   1. The browser's own speech recognition (fil-PH, then tl-PH, then
+//      en-US). Free and instant where it works. On iPhones it needs the
+//      microphone primed first, and it is not offered at all in Home
+//      Screen apps or in-app browsers, or for a language the phone does
+//      not ship as a dictation language (Apple does not ship Filipino
+//      dictation, so the Tagalog tags can never work on an iPhone).
+//   2. Server transcription: the browser records a few seconds of audio
+//      (MediaRecorder — works wherever the microphone works, including
+//      the Home Screen app) and the backend transcribes it with Gemini.
+//      The audio is never stored. If the backend cannot be reached, or
+//      has not been deployed yet, this step is skipped silently.
+//   3. On-device Whisper, only when the learner switched it on in
+//      Settings (enabling it downloads the ~40 MB model, once). The same
+//      recording is decoded to 16 kHz mono and transcribed on the device.
+//   4. A written question, with no penalty.
 //
 // Audio never leaves the device except to the browser's speech-recognition
-// service, if the browser uses one. No recording is stored by DUOLIBEE.
+// service or to the duolibee backend for transcription, if the browser uses
+// one. No recording is stored by DUOLIBEE.
 (() => {
   function recognitionClass() {
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
@@ -104,16 +94,24 @@
     const el = document.getElementById('speak-heard');
     if (el) el.textContent = text ? 'I heard: “' + text + '”' : '';
   }
-  // Set once a terminal service failure happens; in-memory only, so reloading
-  // the page gives speaking another chance (for example after Siri is turned
-  // on or the browser is changed).
-  let speechUnavailable = false;
+  function setMicLabel(text) {
+    const el = document.getElementById('speak-mic');
+    if (el) el.textContent = text;
+  }
+  // Set once the browser's own recognition has terminally failed; in-memory
+  // only, so reloading the page gives it another chance. It does not swap
+  // the exercise any more: the record paths below still work.
+  let browserSpeechDead = false;
   let recognizer = null;
   // Tried in order. 'en-US' is a last resort: if Filipino is not set up as
   // a dictation language on the device, both Tagalog tags are rejected, and
   // an English model transcribing the word phonetically can still pass the
   // generous matcher. It is only reached after both Tagalog tags fail.
   const SPEAK_LANGS = ['fil-PH', 'tl-PH', 'en-US'];
+  // The backend's transcription endpoint (same host as the chat backend).
+  // If it is not deployed yet, or cannot be reached, the call fails and the
+  // next fallback runs — the lesson never depends on it.
+  const TRANSCRIBE_API = 'https://158-179-30-201.sslip.io/duolibee/chat/transcribe';
   function writtenQuestionFor(ex) {
     const options = seededShuffle([...new Set([ex.item.e, ...distractors(ex.item)])], index + 201);
     return { type: 'choice', prompt: 'What does “' + ex.item.t + '” mean?', options, answer: options.indexOf(ex.item.e), srsKeys: ex.srsKeys };
@@ -171,11 +169,7 @@
     const ex = session && session.exercises && session.exercises[index];
     if (!ex || ex.type !== 'speak' || session._answeredIndex === index) return;
     const Recog = recognitionClass();
-    if (!Recog) {
-      speechUnavailable = true;
-      swapToWritten('Speaking isn’t supported in this browser, so this became a written question. No penalty.');
-      return;
-    }
+    if (!Recog) { startRecording(); return; }
     try { if (recognizer) recognizer.abort(); } catch (e) { /* already stopped */ }
     const rec = new Recog();
     recognizer = rec;
@@ -199,10 +193,12 @@
         // The service may know the language under its other tag; try once.
         attemptRecognition(langIndex + 1);
       } else if (err === 'service-not-allowed' || err === 'language-not-supported') {
-        speechUnavailable = true;
-        swapToWritten(isIOS()
-          ? 'Speech recognition isn’t available in this browser on this device. On iPhones it needs Siri turned on (Settings → Siri) and the microphone allowed for Safari. This became a written question instead. No penalty.'
-          : 'Speech recognition isn’t available in this browser on this device. This became a written question instead. No penalty.');
+        // The browser service is dead for this session, but recording
+        // still works — offer that instead of swapping the exercise.
+        browserSpeechDead = true;
+        setStatus(isIOS()
+          ? 'Speech recognition isn’t available in this browser on this device — on iPhones it needs Siri turned on (Settings → Siri). Tap the microphone to record instead, and it will be transcribed for you.'
+          : 'Speech recognition isn’t available in this browser on this device. Tap the microphone to record instead, and it will be transcribed for you.');
       } else if (err === 'not-allowed') {
         swapToWritten('Microphone access was denied, so this became a written question. No penalty — allow the microphone in your browser settings and the next speaking question will offer the microphone again.');
       } else if (err === 'audio-capture') {
@@ -218,29 +214,147 @@
     };
     try { rec.start(); } catch (e) { setStatus('Could not start listening: ' + e.message); }
   }
+  // ---- Recording fallback: server transcription, then on-device Whisper ----
+  let recorder = null;
+  let recordChunks = null;
+  let recordTimer = null;
+  let recordMime = '';
+  function stopTracks(stream) {
+    try { (stream && stream.getTracks ? stream.getTracks() : []).forEach((tr) => { if (tr.stop) tr.stop(); }); } catch (e) { /* ignore */ }
+  }
+  async function startRecording() {
+    const ex = session && session.exercises && session.exercises[index];
+    if (!ex || ex.type !== 'speak' || session._answeredIndex === index) return;
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      swapToWritten('Recording isn’t available in this browser, so this became a written question. No penalty.');
+      return;
+    }
+    try { if (recognizer) recognizer.abort(); } catch (e) { /* already stopped */ }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      swapToWritten('Microphone access was denied, so this became a written question. No penalty — allow the microphone in your browser settings and the next speaking question will offer the microphone again.');
+      return;
+    }
+    recordChunks = [];
+    const rec = new MediaRecorder(stream);
+    recorder = rec;
+    recordMime = rec.mimeType || '';
+    rec.ondataavailable = (event) => { if (event.data && event.data.size) recordChunks.push(event.data); };
+    rec.onstop = () => {
+      stopTracks(stream);
+      recorder = null;
+      setMicLabel('🎤 Tap to speak');
+      finishRecording();
+    };
+    try {
+      rec.start();
+    } catch (e) {
+      stopTracks(stream);
+      recorder = null;
+      setStatus('Could not start recording: ' + e.message);
+      return;
+    }
+    setStatus('Recording… tap the microphone again to stop.');
+    setMicLabel('⏹ Tap to stop');
+    recordTimer = setTimeout(() => { stopRecording(); }, 8000);
+  }
+  function stopRecording() {
+    if (recordTimer) { clearTimeout(recordTimer); recordTimer = null; }
+    if (recorder) {
+      try { recorder.stop(); } catch (e) { recorder = null; }
+    }
+  }
+  async function finishRecording() {
+    const ex = session && session.exercises && session.exercises[index];
+    if (!ex || ex.type !== 'speak' || session._answeredIndex === index) return;
+    const chunks = recordChunks || [];
+    recordChunks = null;
+    if (!chunks.length) {
+      setStatus('Nothing was recorded — tap the microphone and try again.');
+      return;
+    }
+    const blob = new Blob(chunks, { type: recordMime || 'audio/mp4' });
+    if (!blob.size) {
+      setStatus('Nothing was recorded — tap the microphone and try again.');
+      return;
+    }
+    setStatus('Checking what you said…');
+    let text = await transcribeOnServer(blob);
+    if (!text && state.settings.whisper && window.duolibeeWhisper) {
+      text = await transcribeWithWhisper(blob);
+    }
+    if (text) {
+      session.speakHeard = text;
+      setHeard(text);
+      setStatus('Tap “Check my pronunciation” when you are ready.');
+    } else {
+      swapToWritten('Couldn’t check what you said — the transcription service didn’t answer. This became a written question instead. No penalty.');
+    }
+  }
+  // Server transcription. Returns the transcript, or '' on any failure —
+  // the caller falls through to the next option. The backend never stores
+  // the audio; it lives only in this request.
+  async function transcribeOnServer(blob) {
+    try {
+      const res = await fetch(TRANSCRIBE_API, { method: 'POST', body: blob });
+      if (!res.ok) return '';
+      const data = await res.json();
+      return typeof data.transcript === 'string' ? data.transcript.trim() : '';
+    } catch (e) {
+      return '';
+    }
+  }
+  // On-device Whisper. Decodes the recording to 16 kHz mono first, because
+  // that is what the model expects. Returns the transcript, or ''.
+  async function transcribeWithWhisper(blob) {
+    try {
+      const audio = await decodeTo16k(blob);
+      if (!audio || !window.duolibeeWhisper) return '';
+      const text = await window.duolibeeWhisper.transcribe(audio);
+      return (text || '').trim();
+    } catch (e) {
+      return '';
+    }
+  }
+  async function decodeTo16k(blob) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    const buf = await blob.arrayBuffer();
+    const ctx = new AC();
+    try {
+      const decoded = await ctx.decodeAudioData(buf);
+      return resampleTo16k(decoded.getChannelData(0), decoded.sampleRate);
+    } finally {
+      try { ctx.close(); } catch (e) { /* ignore */ }
+    }
+  }
+  function resampleTo16k(data, rate) {
+    if (!rate || rate === 16000) return data;
+    const ratio = rate / 16000;
+    const len = Math.floor(data.length / ratio);
+    const out = new Float32Array(len);
+    for (let i = 0; i < len; i++) {
+      const pos = i * ratio;
+      const j = Math.floor(pos);
+      const frac = pos - j;
+      out[i] = data[j] * (1 - frac) + data[Math.min(j + 1, data.length - 1)] * frac;
+    }
+    return out;
+  }
   startSpeaking = function () {
     const ex = session && session.exercises && session.exercises[index];
     if (!ex || ex.type !== 'speak') return;
     if (session._answeredIndex === index) return;
-    if (!recognitionClass()) {
-      speechUnavailable = true;
-      swapToWritten('Speaking isn’t supported in this browser, so this became a written question. No penalty.');
-      return;
-    }
-    if (isStandaloneWebApp()) {
-      // A Home Screen app runs in a Safari view, not in Safari itself,
-      // and the speech service is not offered there — even though the
-      // microphone permission works. Say so plainly instead of offering
-      // a microphone that can never work in this context.
-      speechUnavailable = true;
-      swapToWritten('You’re using duolibee from the Home Screen, which runs it in a Safari view that doesn’t offer speech recognition. Open duolibee in the Safari app itself to use speaking — this became a written question instead. No penalty.');
-      return;
-    }
-    if (isInAppBrowser()) {
-      // No code can enable the service in a plain webview; say so plainly
-      // instead of offering a microphone that can never work.
-      speechUnavailable = true;
-      swapToWritten('This looks like an in-app browser, which doesn’t offer speech recognition on iPhones. Open duolibee in Safari to use speaking — this became a written question instead. No penalty.');
+    if (recorder) { stopRecording(); return; }
+    // Contexts where the browser's recognition service is never offered
+    // go straight to recording: the microphone and the transcription
+    // fallbacks work fine there.
+    if (!recognitionClass() || browserSpeechDead || isStandaloneWebApp() || isInAppBrowser()) {
+      if (isStandaloneWebApp()) setStatus('Recording — the Home Screen app can’t use the phone’s speech recognition, so this will be transcribed for you.');
+      else if (isInAppBrowser()) setStatus('Recording — this browser doesn’t offer speech recognition, so this will be transcribed for you.');
+      startRecording();
       return;
     }
     if (isIOS()) {
@@ -285,14 +399,15 @@
   const originalRender = renderExercise;
   renderExercise = function () {
     const ex = session && session.exercises && session.exercises[index];
-    if (ex && ex.type === 'speak' && (state.settings.speaking === false || speechUnavailable)) {
+    if (ex && ex.type === 'speak' && state.settings.speaking === false) {
       session.exercises[index] = writtenQuestionFor(ex);
     }
     originalRender();
   };
-  // Exposed for tests: the matcher, and the environment detection that
-  // decides whether speaking can work at all in this browser context.
+  // Exposed for tests: the matcher, the environment detection, and the
+  // recording path (so tests can drive it without a real microphone).
   window.duolibeeSpeakingEnv = { isIOS, isInAppBrowser, isStandaloneWebApp };
+  window.duolibeeSpeaking = { startRecording, stopRecording, transcribeOnServer, transcribeWithWhisper, resampleTo16k };
   window.speakAccepted = speakAccepted;
   window.speakSimilarity = speakSimilarity;
   window.speakSupported = speakSupported;

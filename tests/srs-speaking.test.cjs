@@ -57,7 +57,7 @@ const bodyEl = new El('body');
 
 const sandbox = {
   console, setTimeout, clearTimeout, setInterval, clearInterval,
-  URL, URLSearchParams,
+  URL, URLSearchParams, Blob,
   Math, JSON, Object, Array, Promise, Error, RegExp, Date,
   document: {
     getElementById: (id) => (id === 'app' ? appEl : getEl(id)),
@@ -106,7 +106,7 @@ const order = [
   'release-notes.js', 'mascots.js', 'review-core.js', 'daily-crossword.js',
   'daily-progress.js', 'lesson-retries.js', 'cloud-save.js', 'translation.js',
   'review-conversations.js', 'lesson-numbering.js', 'webpage-update.js',
-  'chat-notifications.js', 'speaking.js',
+  'chat-notifications.js', 'speaking.js', 'whisper.js',
 ];
 const loadFailures = [];
 for (const f of order) {
@@ -483,7 +483,8 @@ for (const f of order) {
   assert.strictEqual(netAfter.type, 'speak', 'a network error must not swap the exercise');
   assert.ok(/connection/i.test(netAfter.status), 'network error should mention the connection, got: ' + netAfter.status);
 
-  // A. 'service-not-allowed' is terminal: auto-swap to a written question with an explanation.
+  // A. 'service-not-allowed' is terminal for the browser service, but the
+  // exercise stays a speak exercise: the learner can record instead.
   const svc = vm.runInContext(`
     (function () {
       window.__fakeError = 'service-not-allowed';
@@ -498,25 +499,210 @@ for (const f of order) {
   await sleep(60);
   const svcAfter = vm.runInContext(`
     (function () {
-      return { type: session.exercises[index].type, notes: window.__notes || [] };
+      return {
+        type: session.exercises[index].type,
+        status: document.getElementById('speak-status').textContent,
+        notes: window.__notes || [],
+      };
     })()
   `, sandbox);
   console.log('service-not-allowed:', JSON.stringify(svcAfter));
-  assert.strictEqual(svcAfter.type, 'choice', 'service-not-allowed must auto-swap to a written question');
-  assert.ok(svcAfter.notes.some((n) => /isn.t available/.test(n) && /written question/.test(n)),
-    'swap must explain why, got notes: ' + JSON.stringify(svcAfter.notes));
+  assert.strictEqual(svcAfter.type, 'speak', 'service-not-allowed must not swap the exercise any more — recording is the fallback');
+  assert.ok(/record instead/i.test(svcAfter.status), 'terminal failure should offer recording, got: ' + svcAfter.status);
+  assert.ok(!svcAfter.notes.some((n) => /written question/.test(n)), 'no written-question note should be added, got: ' + JSON.stringify(svcAfter.notes));
 
-  // B. Later speak exercises in the same session auto-swap at render time.
+  // B. Later speak exercises in the same session stay speak exercises, and
+  // tapping the microphone now records (server transcription) instead of
+  // offering a recognition service that is known to be dead.
+  vm.runInContext(`
+    window.__serverTranscript = null;
+    window.MediaRecorder = class {
+      constructor(stream) { this.stream = stream; this.mimeType = 'audio/mp4'; }
+      start() {
+        const self = this;
+        setTimeout(() => {
+          if (self.ondataavailable) self.ondataavailable({ data: new Blob(['fake-audio'], { type: 'audio/mp4' }) });
+          if (self.onstop) self.onstop();
+        }, 0);
+      }
+      stop() {}
+    };
+    navigator.mediaDevices = { getUserMedia: () => Promise.resolve({ getTracks: () => [] }) };
+  `, sandbox);
+  const fetchBeforeServer = sandbox.fetch;
+  sandbox.fetch = async (url, options) => {
+    const u = String(url && url.url ? url.url : url);
+    if (u.includes('/transcribe')) return { ok: true, status: 200, json: async () => ({ transcript: sandbox.__serverTranscript || '' }) };
+    return fetchBeforeServer(url, options);
+  };
   const later = vm.runInContext(`
     (function () {
       session = LESSONS.find(l => l.id === 4); index = 0; correct = 0; delete session._answeredIndex;
       const idx = session.exercises.findIndex(e => e.type === 'speak');
+      window.__serverTranscript = session.exercises[idx].item.t;
       index = idx; renderExercise();
-      return { type: session.exercises[idx].type };
+      const typeAtRender = session.exercises[idx].type;
+      startSpeaking();
+      return { typeAtRender, idx, item: session.exercises[idx].item.t };
     })()
   `, sandbox);
-  console.log('later speak exercise after terminal failure:', JSON.stringify(later));
-  assert.strictEqual(later.type, 'choice', 'a later speak exercise must auto-swap once the service has failed');
+  await sleep(120);
+  const laterAfter = vm.runInContext(`
+    (function () {
+      const heard = session.speakHeard;
+      const before = correct;
+      checkSpeaking();
+      return { type: session.exercises[index].type, heard, correctBefore: before, correctAfter: correct, answered: session._answeredIndex === index };
+    })()
+  `, sandbox);
+  sandbox.fetch = fetchBeforeServer;
+  console.log('later speak exercise after terminal failure:', JSON.stringify(laterAfter));
+  assert.strictEqual(later.typeAtRender, 'speak', 'a later speak exercise must stay speak once the service has failed');
+  assert.strictEqual(laterAfter.type, 'speak', 'the recorded exercise must stay speak');
+  assert.strictEqual(laterAfter.heard, later.item, 'server transcription should hear the word');
+  assert.strictEqual(laterAfter.correctAfter, laterAfter.correctBefore + 1, 'a correctly transcribed word should grade correct on Check');
+  assert.strictEqual(laterAfter.answered, true, 'Check should mark the exercise answered');
+
+  // H. Server transcription fails, Whisper (switched on) transcribes the
+  // same recording on the device instead.
+  vm.runInContext(`
+    window.__whisperTranscript = null;
+    window.__whisperAudioLen = null;
+    window.__realWhisper = window.duolibeeWhisper;
+    window.duolibeeWhisper = {
+      ensureLoaded: async () => {},
+      transcribe: async (audio) => { window.__whisperAudioLen = audio.length; return window.__whisperTranscript || ''; },
+      status: 'ready',
+    };
+    window.AudioContext = class {
+      constructor() {}
+      async decodeAudioData() { return { sampleRate: 48000, getChannelData: () => new Float32Array([0.1, 0.2, 0.3]) }; }
+      close() {}
+    };
+    state.settings.whisper = true;
+  `, sandbox);
+  const fetchBeforeWhisper = sandbox.fetch;
+  sandbox.fetch = async (url, options) => {
+    const u = String(url && url.url ? url.url : url);
+    if (u.includes('/transcribe')) return { ok: false, status: 502, json: async () => ({}) };
+    return fetchBeforeWhisper(url, options);
+  };
+  const whisperTest = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 9); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      window.__whisperTranscript = session.exercises[idx].item.t;
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx, item: session.exercises[idx].item.t };
+    })()
+  `, sandbox);
+  await sleep(120);
+  const whisperAfter = vm.runInContext(`
+    (function () {
+      return { type: session.exercises[index].type, heard: session.speakHeard, audioLen: window.__whisperAudioLen };
+    })()
+  `, sandbox);
+  sandbox.fetch = fetchBeforeWhisper;
+  console.log('whisper fallback after server failure:', JSON.stringify(whisperAfter));
+  assert.strictEqual(whisperAfter.type, 'speak', 'a Whisper transcription must keep the exercise');
+  assert.strictEqual(whisperAfter.heard, whisperTest.item, 'Whisper should hear the word when the server fails');
+  assert.strictEqual(whisperAfter.audioLen, 1, 'the recording should be resampled to 16 kHz before Whisper (3 samples at 48 kHz -> 1)');
+
+  // I. Server and Whisper both fail: the exercise becomes a written
+  // question, with an explanation and no penalty.
+  vm.runInContext(`
+    window.__whisperTranscript = '';
+    window.__notes = [];
+  `, sandbox);
+  const fetchBeforeBothFail = sandbox.fetch;
+  sandbox.fetch = async (url, options) => {
+    const u = String(url && url.url ? url.url : url);
+    if (u.includes('/transcribe')) throw new Error('offline');
+    return fetchBeforeBothFail(url, options);
+  };
+  const bothFail = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 10); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx };
+    })()
+  `, sandbox);
+  await sleep(120);
+  const bothFailAfter = vm.runInContext(`
+    (function () {
+      return { type: session.exercises[index].type, notes: window.__notes || [] };
+    })()
+  `, sandbox);
+  sandbox.fetch = fetchBeforeBothFail;
+  console.log('server and whisper both fail:', JSON.stringify(bothFailAfter));
+  assert.strictEqual(bothFailAfter.type, 'choice', 'when every transcription path fails the exercise must become a written question');
+  assert.ok(bothFailAfter.notes.some((n) => /Couldn.t check what you said/.test(n)), 'the swap must explain why, got: ' + JSON.stringify(bothFailAfter.notes));
+  vm.runInContext(`
+    window.duolibeeWhisper = window.__realWhisper;
+    delete state.settings.whisper;
+  `, sandbox);
+
+  // J. The Whisper Settings toggle: turning it on starts the model
+  // download; a failed download reverts the setting.
+  vm.runInContext(`
+    window.__whisperLoadCalls = 0;
+    window.__realWhisper2 = window.duolibeeWhisper;
+    window.duolibeeWhisper = {
+      ensureLoaded: async (onProgress) => { window.__whisperLoadCalls++; if (onProgress) onProgress('Downloading… 50%'); },
+      transcribe: async () => '',
+      status: 'ready',
+    };
+    state.settings.whisper = false;
+  `, sandbox);
+  await vm.runInContext('setWhisperEnabled(true)', sandbox);
+  const toggleOn = vm.runInContext(`
+    (function () {
+      return { setting: state.settings.whisper, calls: window.__whisperLoadCalls, status: document.getElementById('whisper-status').textContent };
+    })()
+  `, sandbox);
+  console.log('whisper toggle on:', JSON.stringify(toggleOn));
+  assert.strictEqual(toggleOn.setting, true, 'enabling Whisper must save the setting');
+  assert.strictEqual(toggleOn.calls, 1, 'enabling Whisper must trigger the model download');
+  assert.ok(/Ready/.test(toggleOn.status), 'a loaded model should report Ready, got: ' + toggleOn.status);
+  vm.runInContext(`
+    window.duolibeeWhisper = {
+      ensureLoaded: async () => { throw new Error('no network'); },
+      transcribe: async () => '',
+      status: 'failed',
+    };
+  `, sandbox);
+  await vm.runInContext('setWhisperEnabled(true)', sandbox);
+  const toggleFail = vm.runInContext(`
+    (function () {
+      return { setting: state.settings.whisper, status: document.getElementById('whisper-status').textContent };
+    })()
+  `, sandbox);
+  console.log('whisper toggle, download fails:', JSON.stringify(toggleFail));
+  assert.strictEqual(toggleFail.setting, false, 'a failed download must revert the setting');
+  assert.ok(/Download failed/.test(toggleFail.status), 'a failed download must say so, got: ' + toggleFail.status);
+  vm.runInContext(`
+    window.duolibeeWhisper = window.__realWhisper2;
+    delete state.settings.whisper;
+  `, sandbox);
+
+  // K. Speaking switched off in Settings still swaps speak exercises at
+  // render time.
+  const settingsOff = vm.runInContext(`
+    (function () {
+      state.settings.speaking = false;
+      session = LESSONS.find(l => l.id === 11); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      index = idx; renderExercise();
+      const type = session.exercises[idx].type;
+      state.settings.speaking = true;
+      return { type };
+    })()
+  `, sandbox);
+  console.log('speaking off in settings:', JSON.stringify(settingsOff));
+  assert.strictEqual(settingsOff.type, 'choice', 'speaking off must swap the exercise at render');
 
 
   // ---- Environment detection: Home Screen app, in-app browser, Safari ----
