@@ -102,7 +102,7 @@ vm.createContext(sandbox);
 const order = [
   'pronunciation.js', 'app.js', 'classic-rhymes.js', 'speech-routing.js',
   'learning-flow.js', 'category-generator.js', 'lesson-progression.js',
-  'sentence-builder.js', 'answer-speech.js', 'global-mute.js',
+  'sentence-builder.js', 'answer-speech.js', 'global-mute.js', 'sound-effects.js',
   'release-notes.js', 'mascots.js', 'review-core.js', 'daily-crossword.js',
   'daily-progress.js', 'lesson-retries.js', 'cloud-save.js', 'translation.js',
   'review-conversations.js', 'lesson-numbering.js', 'webpage-update.js',
