@@ -39,7 +39,7 @@
     try { speechSynthesis.resume(); speechSynthesis.speak(u); } catch (e) { active = null; status('Speech could not start: ' + e.message); }
   }
   speak = (text, slow) => play(text, false, slow);
-  testVoice = () => play('Magandang araw! Ako si DUOLIBEE.');
+  testVoice = () => play('Magandang araw! Ako si Lumpy.');
   const settings = renderSettings;
   renderSettings = function() {
     settings();

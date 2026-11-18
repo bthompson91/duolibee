@@ -16,7 +16,7 @@ MODEL='gemini-3.5-flash-lite'
 ORIGIN='https://bthompson91.github.io'
 CLIENT='953505436719-p73hfncc6p39481s6jaedj975l2a9rul.apps.googleusercontent.com'
 BASE='https://raw.githubusercontent.com/bthompson91/duolibee/main/data/'
-MISSION={'id': 'introductions-midpoint', 'version': 1, 'title': 'Meet the bee', 'fictionalDetailsOnly': True, 'opening': 'Kumusta! Ano ang pangalan mo?', 'goals': [{'id': 'name', 'description': 'Introduce yourself using an invented name', 'prompt': 'Ano ang pangalan mo?', 'hints': ['Tell the bee your invented name in Tagalog.', 'Ako si...', 'Ako si Alex.']}, {'id': 'origin', 'description': 'State a fictional place of origin', 'prompt': 'Taga-saan ka?', 'hints': ['Say where your character is from in Tagalog.', 'Taga-... ako.', 'Taga-Australia ako.']}]}
+MISSION={'id': 'introductions-midpoint', 'version': 1, 'title': 'Meet Lumpy', 'fictionalDetailsOnly': True, 'opening': 'Kumusta! Ano ang pangalan mo?', 'goals': [{'id': 'name', 'description': 'Introduce yourself using an invented name', 'prompt': 'Ano ang pangalan mo?', 'hints': ['Tell Lumpy your invented name in Tagalog.', 'Ako si...', 'Ako si Alex.']}, {'id': 'origin', 'description': 'State a fictional place of origin', 'prompt': 'Taga-saan ka?', 'hints': ['Say where your character is from in Tagalog.', 'Taga-... ako.', 'Taga-Australia ako.']}]}
 
 class InvalidAssessment(ValueError):pass
 class ProviderError(Exception):
@@ -120,7 +120,7 @@ def introduction_answer(text, goal):
     if not(name or origin or reciprocal):return '',None,False
     gid='origin' if origin or (reciprocal and goal and goal['id']=='origin') else 'name'
     pure=bool(re.fullmatch(r'(?:ano ang pangalan mo|anong pangalan mo|sino ka|taga[- ]saan ka|(?:at )?ikaw(?: naman)?)[?.! ]*',q))
-    return ('Sa kuwento natin, taga-Pilipinas ako.' if gid=='origin' else 'Ako si Bee!'),gid,pure
+    return ('Sa kuwento natin, taga-Pilipinas ako.' if gid=='origin' else 'Ako si Lumpy!'),gid,pure
 
 
 def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcriber=None,daily_limit=30,public_origin=None,google_client_id=None,identity_verifier=None,catalog_loader=None,account_daily_limit=10,shared_minute_limit=5,account_minute_limit=3):
@@ -240,7 +240,7 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcribe
         if not isinstance(body,dict) or set(body)-{'missionId','vocabularyThroughLesson','numberingVersion'} or not isinstance(body.get('missionId'),str):return fail('Invalid session fields.',400)
         mid=body['missionId'];limit=body.get('vocabularyThroughLesson',0)
         if type(limit) is not int or not 0<=limit<=100:return fail('Invalid vocabularyThroughLesson.',400)
-        if mid!='introductions-midpoint' and body.get('numberingVersion')!='display-v2':return fail('Reload DUOLIBEE v0.25.0 or newer.',409)
+        if mid!='introductions-midpoint' and body.get('numberingVersion')!='display-v2':return fail('Reload Lumpia Lingo v0.25.0 or newer.',409)
         try:ms={'introductions-midpoint':MISSION} if mid=='introductions-midpoint' else catalog()
         except Exception:return fail('Mission catalog unavailable.',503)
         if mid not in ms:return fail('Unknown mission.',400)

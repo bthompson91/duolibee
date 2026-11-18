@@ -19,7 +19,7 @@
     const fresh=!!subject()&&enabled()&&math.unlocked(completed(),read().lesson);
     const count=subject()&&enabled()?unread:0;
     badge.hidden=!fresh&&!count;badge.textContent=count?(count>99?'99+':String(count)):'•';
-    const descriptions=[];if(count)descriptions.push(count+' unread Bee messages');if(fresh)descriptions.push('new practice available');
+    const descriptions=[];if(count)descriptions.push(count+' unread Lumpy messages');if(fresh)descriptions.push('new practice available');
     tab.setAttribute('aria-label','Chat'+(descriptions.length?' — '+descriptions.join('; '):''));
     badge.title=descriptions.join('; ');
   }
