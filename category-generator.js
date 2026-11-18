@@ -24,7 +24,7 @@
           if(type==='speak')return{type:'speak',prompt:'Say this aloud: '+items[3].t,item:items[3]};
           return{type:'audio',item:items[3],options:seededShuffle([...new Set([items[3].e,...distractors(items[3])])],seed)};
         }));
-        LESSONS.push({id,order,category:th.name,icon:th.icon,difficulty:1+(id%5),title:items[0].t+' • Lesson '+order,items,exercises});
+        LESSONS.push({id,order,category:th.name,icon:th.icon,difficulty:1+(id%5),title:items[0].t+' • Lesson '+order,items,exercises,host:th.host||null,intro:th.intro||null});
       }
     });
     return LESSONS;

@@ -106,7 +106,7 @@ const order = [
   'release-notes.js', 'mascots.js', 'review-core.js', 'daily-crossword.js',
   'daily-progress.js', 'lesson-retries.js', 'cloud-save.js', 'translation.js',
   'review-conversations.js', 'lesson-numbering.js', 'webpage-update.js',
-  'chat-notifications.js', 'speaking.js', 'whisper.js',
+  'chat-notifications.js', 'speaking.js', 'characters.js', 'whisper.js',
 ];
 const loadFailures = [];
 for (const f of order) {

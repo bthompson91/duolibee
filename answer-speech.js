@@ -19,6 +19,9 @@
     if (native || !route(false).malay) return String(text);
     return String(text).replace(/\bmga\b/gi, 'manga').replace(/tso/gi, 'cho').replace(/\bng\b/gi, 'nung').replace(/dy/gi, 'j');
   };
+  function hook(name) {
+    try { const f = window[name]; if (typeof f === 'function') f(); } catch (e) { /* best-effort: never break speech */ }
+  }
   function play(text, english = false, slow = false) {
     if (!text || state.settings.muted) return;
     if (!window.speechSynthesis) return status('Device speech is unavailable.');
@@ -30,9 +33,9 @@
     if (selected.voice) u.voice = selected.voice;
     u.lang = selected.voice ? selected.voice.lang : selected.lang;
     u.rate = slow ? .62 : english ? 1 : Number(state.settings.rate) || .9;
-    u.onstart = () => { if (active === u) status('Playing: ' + (english ? 'English' : selected.malay ? 'Malay fallback' : 'Tagalog/Filipino')); };
-    u.onend = () => { if (active === u) { active = null; status('Playback complete.'); } };
-    u.onerror = e => { if (active === u) { active = null; status('Speech error: ' + e.error + '. Tap Play to retry.'); } };
+    u.onstart = () => { if (active === u) { hook('duolibeeSpeechStart'); status('Playing: ' + (english ? 'English' : selected.malay ? 'Malay fallback' : 'Tagalog/Filipino')); } };
+    u.onend = () => { if (active === u) { active = null; hook('duolibeeSpeechEnd'); status('Playback complete.'); } };
+    u.onerror = e => { if (active === u) { active = null; hook('duolibeeSpeechEnd'); status('Speech error: ' + e.error + '. Tap Play to retry.'); } };
     try { speechSynthesis.resume(); speechSynthesis.speak(u); } catch (e) { active = null; status('Speech could not start: ' + e.message); }
   }
   speak = (text, slow) => play(text, false, slow);
