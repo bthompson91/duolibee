@@ -129,10 +129,14 @@ for (const f of order) {
       out.lessonCount = LESSONS.length;
       out.types = [...new Set(LESSONS.flatMap(l => l.exercises.map(e => e.type)))].sort();
       out.speakLessons = LESSONS.filter(l => l.exercises.some(e => e.type === 'speak')).length;
-      // sentence builds intentionally carry [] (no single item); everything else must have keys
-      out.missingSrsKeys = LESSONS.flatMap(l => l.exercises.filter(e => e.type !== 'learn' && e.type !== 'build' && !(e.srsKeys && e.srsKeys.length))).length;
+      // sentence builds and sentence speaks intentionally carry [] (no single item); everything else must have keys
+      out.missingSrsKeys = LESSONS.flatMap(l => l.exercises.filter(e => e.type !== 'learn' && e.type !== 'build' && !e.sentence && !(e.srsKeys && e.srsKeys.length))).length;
       out.buildCount = LESSONS.flatMap(l => l.exercises.filter(e => e.type === 'build')).length;
       out.sentenceBuildKeys = LESSONS.flatMap(l => l.exercises.filter(e => e.type === 'build')).map(e => (e.srsKeys || []).length);
+      out.sentenceSpeakCount = LESSONS.flatMap(l => l.exercises.filter(e => e.sentence)).length;
+      out.sentenceSpeakAfterBuild = LESSONS.every(l => { const b = l.exercises.findIndex(e => e.type === 'build'); return b >= 0 && l.exercises[b + 1] && l.exercises[b + 1].sentence === true; });
+      out.sentenceSpeakKeys = LESSONS.flatMap(l => l.exercises.filter(e => e.sentence)).map(e => (e.srsKeys || []).length);
+      out.sentenceMatchesBuild = LESSONS.every(l => { const b = l.exercises.find(e => e.type === 'build'); const s = l.exercises.find(e => e.sentence); return b && s && s.item.t === b.answer; });
       return out;
     })()
   `;
@@ -144,6 +148,10 @@ for (const f of order) {
   assert.strictEqual(info.missingSrsKeys, 0, 'every non-sentence graded exercise carries srsKeys, got ' + info.missingSrsKeys);
   assert.strictEqual(info.buildCount, 100, 'one sentence build per lesson');
   assert.ok(info.sentenceBuildKeys.every((n) => n === 0), 'sentence builds carry no single-item key');
+  assert.strictEqual(info.sentenceSpeakCount, 100, 'one sentence speak per lesson');
+  assert.ok(info.sentenceSpeakAfterBuild, 'sentence speak follows the build exercise');
+  assert.ok(info.sentenceSpeakKeys.every((n) => n === 0), 'sentence speaks carry no single-item key');
+  assert.ok(info.sentenceMatchesBuild, 'sentence speak uses the build sentence');
 
   // ---- Play lesson 1: the translate exercise wrong on first try, everything else right ----
   // (the sentence build is answered right, so the only first-try failure is a
@@ -286,7 +294,7 @@ for (const f of order) {
     (function () {
       startLesson(2);
       // find the speak exercise
-      let idx = session.exercises.findIndex(e => e.type === 'speak');
+      let idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       index = idx; renderExercise();
       const before = session.exercises[idx].srsKeys.slice();
       replaceSpeakWithChoice();
@@ -328,7 +336,7 @@ for (const f of order) {
   const primer = vm.runInContext(`
     (function () {
       session = LESSONS.find(l => l.id === 6); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       window.__fakeTranscript = session.exercises[idx].item.t;
       index = idx; renderExercise();
       startSpeaking();
@@ -373,7 +381,7 @@ for (const f of order) {
   const langFallback = vm.runInContext(`
     (function () {
       session = LESSONS.find(l => l.id === 7); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       window.__fakeTranscript = session.exercises[idx].item.t;
       index = idx; renderExercise();
       startSpeaking();
@@ -416,7 +424,7 @@ for (const f of order) {
   const fullChain = vm.runInContext(`
     (function () {
       session = LESSONS.find(l => l.id === 8); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       window.__fakeTranscript = session.exercises[idx].item.t;
       index = idx; renderExercise();
       startSpeaking();
@@ -464,7 +472,7 @@ for (const f of order) {
     (function () {
       window.__fakeError = 'network';
       session = LESSONS.find(l => l.id === 5); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       index = idx; renderExercise();
       startSpeaking();
       return { idx, type: session.exercises[idx].type };
@@ -490,7 +498,7 @@ for (const f of order) {
       window.__fakeError = 'service-not-allowed';
       window.__notes = [];
       session = LESSONS.find(l => l.id === 3); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       index = idx; renderExercise();
       startSpeaking();
       return { idx };
@@ -538,7 +546,7 @@ for (const f of order) {
   const later = vm.runInContext(`
     (function () {
       session = LESSONS.find(l => l.id === 4); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       window.__serverTranscript = session.exercises[idx].item.t;
       index = idx; renderExercise();
       const typeAtRender = session.exercises[idx].type;
@@ -590,7 +598,7 @@ for (const f of order) {
   const whisperTest = vm.runInContext(`
     (function () {
       session = LESSONS.find(l => l.id === 9); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       window.__whisperTranscript = session.exercises[idx].item.t;
       index = idx; renderExercise();
       startSpeaking();
@@ -624,7 +632,7 @@ for (const f of order) {
   const bothFail = vm.runInContext(`
     (function () {
       session = LESSONS.find(l => l.id === 10); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       index = idx; renderExercise();
       startSpeaking();
       return { idx };
@@ -694,7 +702,7 @@ for (const f of order) {
     (function () {
       state.settings.speaking = false;
       session = LESSONS.find(l => l.id === 11); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       index = idx; renderExercise();
       const type = session.exercises[idx].type;
       state.settings.speaking = true;
@@ -704,6 +712,53 @@ for (const f of order) {
   console.log('speaking off in settings:', JSON.stringify(settingsOff));
   assert.strictEqual(settingsOff.type, 'choice', 'speaking off must swap the exercise at render');
 
+  // L. A sentence speak that cannot be transcribed becomes a translate
+  // question (type the sentence), not a choice: a choice would give the
+  // long English sentence away among single-word distractors.
+  vm.runInContext(`
+    window.__notes = [];
+  `, sandbox);
+  const fetchBeforeSentenceFail = sandbox.fetch;
+  sandbox.fetch = async (url, options) => {
+    const u = String(url && url.url ? url.url : url);
+    if (u.includes('/transcribe')) throw new Error('offline');
+    return fetchBeforeSentenceFail(url, options);
+  };
+  const sentenceFail = vm.runInContext(`
+    (function () {
+      startLesson(12);
+      const idx = session.exercises.findIndex(e => e.sentence);
+      const sentence = session.exercises[idx].item.t;
+      const english = session.exercises[idx].item.e;
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx, sentence, english };
+    })()
+  `, sandbox);
+  await sleep(120);
+  const sentenceFailAfter = vm.runInContext(`
+    (function () {
+      const ex = session.exercises[index];
+      return { type: ex.type, prompt: ex.prompt, itemT: ex.item && ex.item.t, origin: ex._origin, notes: window.__notes || [] };
+    })()
+  `, sandbox);
+  sandbox.fetch = fetchBeforeSentenceFail;
+  console.log('sentence speak, transcription fails:', JSON.stringify(sentenceFailAfter));
+  assert.strictEqual(sentenceFailAfter.type, 'translate', 'a failed sentence speak must become a translate question');
+  assert.strictEqual(sentenceFailAfter.prompt, 'Translate: ' + sentenceFail.english, 'the translate prompt shows the English sentence');
+  assert.strictEqual(sentenceFailAfter.itemT, sentenceFail.sentence, 'the translate answer is the sentence');
+  assert.strictEqual(sentenceFailAfter.origin, sentenceFail.idx, 'the fallback keeps the sentence speak origin');
+  assert.ok(sentenceFailAfter.notes.some((n) => /Couldn.t check what you said/.test(n)), 'the swap must explain why, got: ' + JSON.stringify(sentenceFailAfter.notes));
+  // Answering the translate correctly grades it right.
+  const sentenceAnswered = vm.runInContext(`
+    (function () {
+      document.getElementById('answer').value = session.exercises[index].item.t;
+      answerTranslate();
+      return { correct };
+    })()
+  `, sandbox);
+  console.log('sentence translate answered:', JSON.stringify(sentenceAnswered));
+  assert.strictEqual(sentenceAnswered.correct, 1, 'typing the sentence must grade correct');
 
   // ---- Environment detection: Home Screen app, in-app browser, Safari ----
   const envTests = vm.runInContext(`

@@ -1,6 +1,7 @@
 (() => {
   function srsKeysFor(lesson, ex) {
     const key = (it) => srsKey(it.theme || lesson.category, it.t);
+    if (ex.type === 'speak' && ex.sentence) return []; // a sentence speak tests a sentence, not one vocab item
     if (ex.type === 'translate' || ex.type === 'audio' || ex.type === 'speak') return ex.item ? [key(ex.item)] : [];
     if (ex.type === 'match') return (ex.pairs || []).map((pr) => srsKey(lesson.category, pr.t));
     if (ex.type === 'build') return []; // a sentence build tests a sentence, not one vocab item
@@ -40,6 +41,15 @@
         words: words,
         answer: sentence.t,
         seed: lesson.id * 977 + words.length
+      });
+      // Speak the sentence you just built: a second speaking exercise right
+      // after the build, same sentence, no SRS key (sentences are practice,
+      // like the build itself). It reuses the speak UI and flow.
+      const at = lesson.exercises.indexOf(target);
+      if (at >= 0) lesson.exercises.splice(at + 1, 0, {
+        type: 'speak', sentence: true, srsKeys: [],
+        prompt: 'Say this aloud: ' + sentence.t,
+        item: { t: sentence.t, e: sentence.e }
       });
     });
     return lessons;

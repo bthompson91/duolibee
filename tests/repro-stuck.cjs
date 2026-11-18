@@ -231,7 +231,7 @@ const V = (code) => vm.runInContext(code, sandbox);
         console.log('  !! speak did NOT swap; status =', V(`(document.getElementById('speak-status') || {}).textContent || 'n/a'`));
         return 'speak-no-swap';
       }
-      console.log('  speak swapped -> choice, origin =', after.origin);
+      console.log('  speak swapped -> ' + after.type + ', origin =', after.origin);
       return 'speak swapped; ' + (await answerCurrent(true));
     }
     return 'unknown:' + ex.type;
