@@ -12,7 +12,7 @@
         const id=categoryIndex+1+local*THEMES.length;
         const items=[0,1,2,3].map(k=>Object.assign({},th.items[(id*3+k)%th.items.length],{theme:th.name}));
         const order=LESSONS.length+1;
-        const kinds=['choice','translate','match','build','audio'];
+        const kinds=['choice','translate','match','build','audio','speak'];
         const shift=(id-1)%kinds.length;
         const exercises=[{type:'learn',items}].concat(kinds.slice(shift).concat(kinds.slice(0,shift)).map((type,ei)=>{
           const seed=id*100+ei;
@@ -21,6 +21,7 @@
           if(type==='translate')return{type,prompt:'Translate: '+items[1].e,item:items[1]};
           if(type==='match')return{type,pairs:items.map(it=>({t:it.t,e:it.e}))};
           if(type==='build')return items[2].s?{type,prompt:'Build: '+items[2].se,words:items[2].s.split(' '),answer:items[2].s,seed}:choice(items[2],'Choose the English for “'+items[2].t+'”');
+          if(type==='speak')return{type:'speak',prompt:'Say this aloud: '+items[3].t,item:items[3]};
           return{type:'audio',item:items[3],options:seededShuffle([...new Set([items[3].e,...distractors(items[3])])],seed)};
         }));
         LESSONS.push({id,order,category:th.name,icon:th.icon,difficulty:1+(id%5),title:items[0].t+' • Lesson '+order,items,exercises});

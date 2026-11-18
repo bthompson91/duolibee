@@ -24,7 +24,7 @@
       const ex=session.exercises[index];if(ex.type!=='audio'||session._answeredIndex===index)return;
       serial++;clearTimeout(timer);if(window.speechSynthesis)speechSynthesis.cancel();
       const options=[ex.item.e,...distractors(ex.item)];const unique=[...new Set(options)];
-      session.exercises[index]={type:'choice',prompt:'Select the English for: '+ex.item.t,options:unique,answer:unique.indexOf(ex.item.e)};
+      session.exercises[index]={type:'choice',prompt:'Select the English for: '+ex.item.t,options:unique,answer:unique.indexOf(ex.item.e),srsKeys:ex.srsKeys};
       renderExercise();status('Audio question replaced with a written question. No penalty.');
     };const card=app.querySelector('.card');if(card)card.append(b);
   }

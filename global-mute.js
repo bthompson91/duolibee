@@ -41,7 +41,8 @@
         type: 'choice',
         prompt: 'What does “' + exercise.item.t + '” mean?',
         options: options,
-        answer: options.indexOf(exercise.item.e)
+        answer: options.indexOf(exercise.item.e),
+        srsKeys: exercise.srsKeys
       };
     }
     originalRenderExercise();

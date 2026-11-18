@@ -1,7 +1,21 @@
 (() => {
+  function srsKeysFor(lesson, ex) {
+    const key = (it) => srsKey(it.theme || lesson.category, it.t);
+    if (ex.type === 'translate' || ex.type === 'audio' || ex.type === 'speak') return ex.item ? [key(ex.item)] : [];
+    if (ex.type === 'match') return (ex.pairs || []).map((pr) => srsKey(lesson.category, pr.t));
+    if (ex.type === 'build') return []; // a sentence build tests a sentence, not one vocab item
+    if (ex.type === 'choice') {
+      const m = /“(.+?)”/.exec(ex.prompt || '');
+      const it = m && (lesson.items || []).find((x) => x.t === m[1]);
+      if (it) return [key(it)];
+      if (lesson.items && lesson.items[0]) return [key(lesson.items[0])];
+    }
+    return [];
+  }
   const originalBuild = buildLessons;
   buildLessons = function(data) {
     const lessons = originalBuild(data);
+    lessons.forEach((lesson) => { lesson.exercises.forEach((ex) => { if (ex.type !== 'learn') ex.srsKeys = srsKeysFor(lesson, ex); }); });
     const sentencesByTheme = {};
     (data.themes || []).forEach(theme => {
       sentencesByTheme[theme.name] = (theme.sentences || []).filter(s => s.t && s.e);
@@ -13,7 +27,14 @@
       const target = graded[(lesson.id - 1) % graded.length];
       const sentence = sentences[(lesson.id - 1) % sentences.length];
       const words = sentence.t.split(' ');
+      // A converted exercise must not keep stale fields from its old type:
+      // a leftover options array made the retry logic read item.e of an
+      // exercise that has no item, crashing a wrong first answer.
+      delete target.options;
+      delete target.pairs;
+      delete target.item;
       Object.assign(target, {
+        srsKeys: [],
         type: 'build',
         prompt: 'Build: ' + sentence.e,
         words: words,
