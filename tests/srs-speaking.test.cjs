@@ -137,6 +137,10 @@ for (const f of order) {
       out.sentenceSpeakAfterBuild = LESSONS.every(l => { const b = l.exercises.findIndex(e => e.type === 'build'); return b >= 0 && l.exercises[b + 1] && l.exercises[b + 1].sentence === true; });
       out.sentenceSpeakKeys = LESSONS.flatMap(l => l.exercises.filter(e => e.sentence)).map(e => (e.srsKeys || []).length);
       out.sentenceDiffersFromBuild = LESSONS.every(l => { const b = l.exercises.find(e => e.type === 'build'); const s = l.exercises.find(e => e.sentence); return b && s && s.item.t !== b.answer; });
+      out.reverseCount = LESSONS.flatMap(l => l.exercises.filter(e => e.type === 'reverse')).length;
+      out.gradedById = {};
+      [1, 7, 13, 19, 25, 31, 100].forEach(id => { const l = LESSONS.find(x => x.id === id); out.gradedById[id] = l.exercises.filter(e => e.type !== 'learn').length; });
+      out.itemsPerLesson = LESSONS.map(l => l.items.length);
       return out;
     })()
   `;
@@ -148,10 +152,22 @@ for (const f of order) {
   assert.strictEqual(info.missingSrsKeys, 0, 'every non-sentence graded exercise carries srsKeys, got ' + info.missingSrsKeys);
   assert.strictEqual(info.buildCount, 100, 'one sentence build per lesson');
   assert.ok(info.sentenceBuildKeys.every((n) => n === 0), 'sentence builds carry no single-item key');
-  assert.strictEqual(info.sentenceSpeakCount, 100, 'one sentence speak per lesson');
+  assert.strictEqual(info.sentenceSpeakCount, 170, 'one sentence speak per lesson plus a second one in lessons 31+ (100 + 70)');
   assert.ok(info.sentenceSpeakAfterBuild, 'sentence speak follows the build exercise');
   assert.ok(info.sentenceSpeakKeys.every((n) => n === 0), 'sentence speaks carry no single-item key');
   assert.ok(info.sentenceDiffersFromBuild, 'sentence speak uses a different sentence than the build');
+  assert.ok(info.types.includes('reverse'), 'reverse translate exercise type exists');
+  assert.strictEqual(info.reverseCount, 94, 'a reverse translate in every lesson from 7 on (94 lessons)');
+  // gradedById comes from the vm context, so compare values individually
+  // (deepStrictEqual would fail on the vm object's prototype).
+  assert.strictEqual(info.gradedById[1], 7, 'lesson 1 has 7 graded');
+  assert.strictEqual(info.gradedById[7], 8, 'lesson 7 has 8 graded');
+  assert.strictEqual(info.gradedById[13], 9, 'lesson 13 has 9 graded');
+  assert.strictEqual(info.gradedById[19], 10, 'lesson 19 has 10 graded');
+  assert.strictEqual(info.gradedById[25], 11, 'lesson 25 has 11 graded');
+  assert.strictEqual(info.gradedById[31], 12, 'lesson 31 has 12 graded');
+  assert.strictEqual(info.gradedById[100], 12, 'lesson 100 has 12 graded');
+  assert.ok(info.itemsPerLesson.every((n) => n === 6), '6 words per lesson');
 
   // ---- Play lesson 1: the translate exercise wrong on first try, everything else right ----
   // (the sentence build is answered right, so the only first-try failure is a
@@ -175,6 +191,9 @@ for (const f of order) {
         } else if (ex.type === 'translate') {
           document.getElementById('answer').value = firstGraded ? 'maling sagot' : ex.item.t;
           answerTranslate();
+        } else if (ex.type === 'reverse') {
+          document.getElementById('answer').value = ex.item.e.split('/')[0].trim();
+          answerReverse();
         } else if (ex.type === 'match') {
           if (false) {
             // one wrong pairing, then correct ones (retry wrapper settles on first wrong pair)
@@ -265,6 +284,69 @@ for (const f of order) {
     assert.ok(rev.after[k].streak > rev.before[k], k + ' should advance after a correct review');
     console.log('  review advanced:', k, 'streak', rev.before[k], '->', rev.after[k].streak);
   }
+
+  // ---- Ramp play: lesson 31 (all 5 extras, 12 graded) completes, with a
+  // reverse translate, two audios, two choices, and two sentence speaks ----
+  const play31 = `
+    (function () {
+      // lesson-progression.js refuses a lesson past the frontier
+      for (let i = 1; i < 31; i++) state.completed[i] = { last: Date.now() };
+      startLesson(31);
+      let steps = 0;
+      const seen = {};
+      while (steps++ < 40) {
+        const ex = session.exercises[index];
+        if (!ex) break;
+        if (index >= session.exercises.length) break;
+        if (ex.type === 'learn') { next(); continue; }
+        seen[ex.type] = (seen[ex.type] || 0) + 1;
+        if (ex.sentence) seen.sentence = (seen.sentence || 0) + 1;
+        if (ex.type === 'choice') {
+          answerChoice(ex.answer);
+        } else if (ex.type === 'translate') {
+          document.getElementById('answer').value = ex.item.t;
+          answerTranslate();
+        } else if (ex.type === 'reverse') {
+          document.getElementById('answer').value = ex.item.e.split('/')[0].trim();
+          answerReverse();
+        } else if (ex.type === 'match') {
+          for (let i = 0; i < ex.pairs.length; i++) {
+            const t = ex.pairs[i].t, e = ex.pairs[i].e;
+            pickMatch('L', session.mL.indexOf(t));
+            pickMatch('R', session.mR.indexOf(e));
+          }
+        } else if (ex.type === 'build') {
+          const words = ex.answer.split(' ');
+          const used = new Set();
+          session.built = words.map((w) => {
+            const j = session.bank.findIndex((b, k) => b === w && !used.has(k));
+            used.add(j); return j;
+          });
+          checkBuild();
+        } else if (ex.type === 'audio') {
+          answerAudio(ex.options.indexOf(ex.item.e));
+        } else if (ex.type === 'speak') {
+          session.speakHeard = ex.item.t;
+          checkSpeaking();
+        }
+        next();
+        if (app.innerHTML.includes('Session complete')) break;
+      }
+      return { steps, seen, completed: !!state.completed[31], graded: session.exercises.filter(e => e.type !== 'learn').length };
+    })()
+  `;
+  // The harness's fake match buttons persist across lessons and stay
+  // disabled after lesson 1's match; a real browser re-renders fresh ones.
+  for (const el of byId.values()) el.disabled = false;
+  const r31 = vm.runInContext(play31, sandbox);
+  console.log('lesson 31 ramp play:', JSON.stringify(r31));
+  assert.ok(r31.completed, 'lesson 31 should complete');
+  assert.strictEqual(r31.graded, 12, 'lesson 31 has 12 graded questions');
+  assert.strictEqual(r31.seen.reverse, 1, 'lesson 31 has a reverse translate');
+  assert.strictEqual(r31.seen.sentence, 2, 'lesson 31 has two sentence speaks');
+  assert.strictEqual(r31.seen.speak, 4, 'lesson 31 has four speak exercises (word x2 + sentence x2)');
+  assert.strictEqual(r31.seen.audio, 2, 'lesson 31 has two audio exercises');
+  assert.strictEqual(r31.seen.choice, 2, 'lesson 31 has two choice exercises');
 
   // ---- Speaking matcher unit tests ----
   const speakTests = vm.runInContext(`

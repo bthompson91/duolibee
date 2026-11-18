@@ -171,7 +171,7 @@ const V = (code) => vm.runInContext(code, sandbox);
   async function answerCurrent(swapped) {
     const s = snap();
     if (s.done) return 'done';
-    const ex = JSON.parse(V(`(function () { const e = session.exercises[index]; return JSON.stringify({ type: e.type, answer: e.answer, options: e.options || null, item: e.item ? e.item.t : null }); })()`));
+    const ex = JSON.parse(V(`(function () { const e = session.exercises[index]; return JSON.stringify({ type: e.type, answer: e.answer, options: e.options || null, item: e.item ? e.item.t : null, itemE: e.item ? e.item.e : null }); })()`));
     if (ex.type === 'learn') { V('next()'); return 'learn'; }
     if (ex.type === 'choice') {
       const isSwapped = !!swapped; // a swapped choice keeps its _origin, so track it via the caller
@@ -188,6 +188,12 @@ const V = (code) => vm.runInContext(code, sandbox);
       await sleep(10);
       V('next()');
       return 'translate' + (wrong ? ' WRONG' : ' ok');
+    }
+    if (ex.type === 'reverse') {
+      V(`document.getElementById('answer').value = ${JSON.stringify(ex.itemE.split('/')[0].trim())}; answerReverse();`);
+      await sleep(10);
+      V('next()');
+      return 'reverse ok';
     }
     if (ex.type === 'match') {
       V(`(function () { const ex = session.exercises[index]; for (let i = 0; i < ex.pairs.length; i++) { const t = ex.pairs[i].t, e = ex.pairs[i].e; pickMatch('L', session.mL.indexOf(t)); pickMatch('R', session.mR.indexOf(e)); } })()`);

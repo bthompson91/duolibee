@@ -10,7 +10,7 @@
       const count=Math.max(0,Math.floor((data.total-1-categoryIndex)/THEMES.length)+1);
       for(let local=0;local<count;local++){
         const id=categoryIndex+1+local*THEMES.length;
-        const items=[0,1,2,3].map(k=>Object.assign({},th.items[(id*3+k)%th.items.length],{theme:th.name}));
+        const items=[0,1,2,3,4,5].map(k=>Object.assign({},th.items[(id*3+k)%th.items.length],{theme:th.name}));
         const order=LESSONS.length+1;
         const kinds=['choice','translate','match','build','audio','speak'];
         const shift=(id-1)%kinds.length;
