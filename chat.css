@@ -1,7 +1,7 @@
 /* v0.34.0: plain, system-font messaging surface, independent of app theme. */
 #tab-chat[hidden]{display:none!important}
 .im-shell.im-thread{max-width:800px;margin:auto;background:#F6F0E3!important;color:#151515!important;border:1px solid #DCD2B8;border-radius:16px;overflow:hidden;color-scheme:light}
-.im-shell.im-thread,.im-shell.im-thread *{font-family:'Knewave','Bubblegum Sans',system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;letter-spacing:normal!important;text-shadow:none!important}
+.im-shell.im-thread,.im-shell.im-thread *{font-family:'Fuzzy Bubbles','Bubblegum Sans',system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;letter-spacing:normal!important;text-shadow:none!important}
 .im-thread .im-header{padding:16px;border-bottom:1px solid #DCD2B8;background:#F6F0E3;color:#151515}
 .im-thread .im-header h2{margin:0;font-size:1.4rem}.im-thread .im-header small{font-size:.85rem;color:#555}
 .im-thread>p,.im-thread>details{padding:10px 16px;margin:0;color:#333}
