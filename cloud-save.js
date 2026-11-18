@@ -20,7 +20,7 @@ function failure(e){status((e.name==='AbortError'?'Drive timed out.':e.message)+
 function schedule(){clearTimeout(timer);if(!paused&&usable()&&!resets[who?.sub]?.pending)timer=setTimeout(()=>sync().catch(failure),3000);}
 async function reconcile(){const generation=await currentGeneration();if((resets[who.sub]?.generation||'legacy')!==generation){emptyLocal();resets[who.sub]={generation};writeResets();}const q=new URLSearchParams({spaces:'appDataFolder',q:"name = '"+NAME+"' and trashed = false"+(generation==='legacy'?'':" and appProperties has { key='resetGeneration' and value='"+generation+"' }"),fields:'files(id)',orderBy:'createdTime desc',pageSize:'1'}),remote=(await api('https://www.googleapis.com/drive/v3/files?'+q)).files?.[0];let remoteText='';if(remote){const snapshot=await api('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(remote.id)+'?alt=media');if((snapshot.resetGeneration||'legacy')!==generation)throw Error('Cloud reset generation mismatch. Reload and retry.');const other=validate(snapshot);remoteText=JSON.stringify(other);const meaningful=Object.keys(state.completed||{}).length||Object.keys(state.srs||{}).length||state.xp>0||state.dailyChallenge||state.activeLesson;const merged=meaningful?merge(state,other):other;if(JSON.stringify(merged)!==JSON.stringify(state)){localStorage.setItem('duolibee-before-cloud-restore',JSON.stringify(state));paused=true;try{running=false;state={...copy(DEFAULTS),...copy(merged)};state.settings={...DEFAULTS.settings,...state.settings};migrateSrs();save();document.body.classList.toggle('dark',!!state.settings.dark);go('home');}finally{paused=false;}}}
 const text=JSON.stringify(state);let file=remote;if(text!==remoteText){file=await writeJSON(NAME,{app:'DUOLIBEE',version:1,resetGeneration:generation,savedAt:new Date().toISOString(),parent:remote?.id||null,state:JSON.parse(text)},{resetGeneration:generation});}if(await currentGeneration()!==generation)throw Error('Cloud was reset during backup. Retry.');Object.assign(record(),{fileId:file.id,synced:text,lastSync:Date.now()});localStorage.setItem('duolibee-cloud-meta-v1',JSON.stringify(meta));status('Cloud backup saved · '+new Date().toLocaleTimeString());if(JSON.stringify(state)!==text)schedule();}
-async function sync(){if(busy)return;if(resets[who?.sub]?.pending){status('Reset incomplete. Use Erase learning progress again to finish; backup is paused.');return;}if(!who||!usable()){if(who)status('Backup pending: renew Google permission.');return;}if(!navigator.onLine){status('Offline; backup pending. Progress is saved locally.');return;}busy=true;status('Backing up…');try{await reconcile();}finally{busy=false;}}
+async function sync(){if(busy)return;if(resets[who?.sub]?.pending){status('Reset incomplete. Use Erase learning progress again to finish; backup is paused.');return;}if(!who||!usable()){if(who&&!connecting){const op=operation,subject=who.sub;connecting=true;status('Signed in. Renewing Google sync permission…');if(requestDriveToken(op,subject,false,()=>{if(op!==operation)return;connecting=false;status('Backup pending: renew Google permission.');if(view==='settings')renderSettings();}))return;connecting=false;status('Backup pending: renew Google permission.');}return;}if(!navigator.onLine){status('Offline; backup pending. Progress is saved locally.');return;}busy=true;status('Backing up…');try{await reconcile();}finally{busy=false;}}
 async function drive(r,op=operation,subject=who?.sub){
   if(op!==operation||subject!==who?.sub)return;
   connecting=false;
@@ -35,14 +35,25 @@ async function drive(r,op=operation,subject=who?.sub){
   }catch(e){failure(e);}
   if(view==='settings')renderSettings();
 }
+function requestDriveToken(op,subject,allowPopup,onExhausted){
+  if(!window.google?.accounts?.oauth2)return false;
+  let silent=true;
+  const onError=()=>{
+    if(op!==operation)return;
+    if(silent&&allowPopup){silent=false;try{oauth.requestAccessToken({prompt:'',login_hint:subject});return;}catch(_){}}
+    onExhausted();
+  };
+  oauth=google.accounts.oauth2.initTokenClient({client_id:CLIENT,scope:SCOPE,callback:r=>drive(r,op,subject),error_callback:onError});
+  try{oauth.requestAccessToken({prompt:'none',login_hint:subject});}catch(_){onError();}
+  return true;
+}
 function connect(){
   if(!validId()||busy||connecting)return;
   if(!window.google?.accounts?.oauth2){status('Google is still loading. Please retry.');return;}
   connecting=true;status('Signed in. Continuing to Google sync permission…');
   const op=operation,subject=who.sub;
   const blocked=()=>{if(op!==operation)return;connecting=false;status('Signed in. Your browser needs a click to finish Google sync; use Finish connecting.');if(view==='settings')renderSettings();};
-  oauth=google.accounts.oauth2.initTokenClient({client_id:CLIENT,scope:SCOPE,callback:r=>drive(r,op,subject),error_callback:blocked});
-  try{oauth.requestAccessToken({prompt:'',login_hint:subject});}catch(_){blocked();}
+  if(!requestDriveToken(op,subject,true,blocked)){connecting=false;status('Google is still loading. Please retry.');}
 }
 function identity(r){
   if(busy)return;
