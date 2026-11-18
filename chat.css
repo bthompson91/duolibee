@@ -1,7 +1,7 @@
 /* v0.34.0: plain, system-font messaging surface, independent of app theme. */
 #tab-chat[hidden]{display:none!important}
 .im-shell.im-thread{max-width:800px;margin:auto;background:#F6F0E3!important;color:#151515!important;border:1px solid #DCD2B8;border-radius:16px;overflow:hidden;color-scheme:light}
-.im-shell.im-thread,.im-shell.im-thread *{font-family:'Fuzzy Bubbles','Bubblegum Sans',system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;letter-spacing:normal!important;text-shadow:none!important}
+.im-shell.im-thread,.im-shell.im-thread *{font-family:'Varela Round','Fuzzy Bubbles','Bubblegum Sans',system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;letter-spacing:normal!important;text-shadow:none!important}
 .im-thread .im-header{padding:16px;border-bottom:1px solid #DCD2B8;background:#F6F0E3;color:#151515}
 .im-thread .im-header h2{margin:0;font-size:1.4rem}.im-thread .im-header small{font-size:.85rem;color:#555}
 .im-thread>p,.im-thread>details{padding:10px 16px;margin:0;color:#333}
@@ -13,5 +13,5 @@
 .im-thread .im-composer{display:flex;flex-wrap:wrap;gap:8px;position:sticky;bottom:0;padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:#F6F0E3!important;border-top:1px solid #DCD2B8}
 .im-thread .im-composer textarea{flex:1 1 100%;min-width:0;border:1px solid #aaa;border-radius:12px;padding:12px;font-size:1rem;line-height:1.4;background:#F6F0E3!important;color:#151515!important}
 .im-thread button{min-height:44px;padding:9px 14px;margin:3px;border:1px solid #777;border-radius:10px;background:#EFE7D3;color:#151515;font-size:1rem;font-weight:500;cursor:pointer}
-.im-thread button.primary{background:#D9BC72;color:#1f2b32;border-color:#B49A55}.im-thread button:disabled{opacity:.55;cursor:wait}.im-thread button:focus-visible,.im-thread textarea:focus-visible,.im-thread summary:focus-visible{outline:3px solid #B49A55;outline-offset:2px}
+.im-thread button.primary{background:#C9A961;color:#1f2b32;border-color:#B49A55}.im-thread button:disabled{opacity:.55;cursor:wait}.im-thread button:focus-visible,.im-thread textarea:focus-visible,.im-thread summary:focus-visible{outline:3px solid #B49A55;outline-offset:2px}
 #chat-preference label{display:block;line-height:1.6}
