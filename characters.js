@@ -11,9 +11,13 @@
 // Art lives in assets/characters/ (downscaled to 512px). The registry is
 // data/characters.json. The talking animation alternates a character's
 // mouth-closed / mouth-open frames for the current state while a line is
-// being spoken (answer-speech.js calls duolibeeSpeechStart/End around
-// playback); it settles on mouth-closed when speech ends, and never
-// animates when the learner prefers reduced motion.
+// being spoken; it settles on mouth-closed when speech ends, and never
+// animates when the learner prefers reduced motion. answer-speech.js
+// starts it at speak time (play()) as well as on the utterance onstart,
+// because iOS often never fires the utterance events at all, and a 15s
+// safety cap stops it if speech end is never reported. A portrait is
+// shown on every exercise (speaker card, else a compact host strip) so
+// the animation is visible wherever speech can play.
 (() => {
   let REGISTRY = null;
   let readyResolve = null;
@@ -62,11 +66,11 @@
     return '<img id="' + imgId + '" data-character="' + esc(id) + '" data-state="' + esc(state || 'neutral') + '"' +
       (src ? ' src="' + esc(src) + '"' : '') + ' alt="' + esc(alt) + '">';
   }
-  function hostCardHTML(lesson) {
+  function hostCardHTML(lesson, compact) {
     if (!lesson || !lesson.host) return '';
     return '<div class="character-host">' + imgTag(lesson.host, 'neutral', 'host-portrait') +
       '<div><strong>' + esc(displayName(lesson.host)) + '</strong>' +
-      (lesson.intro ? '<p>' + esc(lesson.intro) + '</p>' : '') + '</div></div>';
+      (!compact && lesson.intro ? '<p>' + esc(lesson.intro) + '</p>' : '') + '</div></div>';
   }
   function speakerCardHTML(ex) {
     if (!ex || !ex.speaker) return '';
@@ -89,6 +93,7 @@
 
   // ---- Talking animation ----
   let talkTimer = null;
+  let talkCap = null;
   let talkImg = null;
   let talkOpen = false;
   let talkClosedSrc = null;
@@ -119,6 +124,10 @@
           talkImg.src = talkOpen ? talkOpenSrc : talkClosedSrc;
         } catch (e) { /* best-effort */ }
       }, intervalMs || 180);
+      // Safety cap: if speech end is never reported (iOS sometimes drops
+      // the utterance events entirely), the mouth must not flap forever.
+      if (talkCap) clearTimeout(talkCap);
+      talkCap = setTimeout(() => { stopTalking(); }, 15000);
       return true;
     } catch (e) {
       return false;
@@ -126,6 +135,7 @@
   }
   function stopTalking() {
     try {
+      if (talkCap) { clearTimeout(talkCap); talkCap = null; }
       if (talkTimer) { clearInterval(talkTimer); talkTimer = null; }
       if (talkImg && talkClosedSrc) { try { talkImg.src = talkClosedSrc; } catch (e) { /* ignore */ } }
     } catch (e) { /* best-effort */ }
@@ -134,11 +144,14 @@
     talkOpenSrc = null;
     talkOpen = false;
   }
-  // Called by answer-speech.js around speech playback. Only animates when
-  // the current exercise shows a speaker portrait.
+  // Called by answer-speech.js around speech playback: at speak time in
+  // play() as well as on the utterance onstart, because iOS often never
+  // fires the utterance events at all. Animates whichever portrait is on
+  // screen — the speaker portrait on sentence exercises, else the host
+  // portrait (learn screen and the compact host strip on other exercises).
   window.duolibeeSpeechStart = function () {
     try {
-      const img = document.getElementById ? document.getElementById('speaker-portrait') : null;
+      const img = document.getElementById ? (document.getElementById('speaker-portrait') || document.getElementById('host-portrait')) : null;
       if (!img) return;
       const id = img.dataset ? img.dataset.character : null;
       const state = (img.dataset && img.dataset.state) || 'neutral';
@@ -149,7 +162,11 @@
     try { stopTalking(); } catch (e) { /* best-effort */ }
   };
 
-  // ---- Render: host card on the learn screen, speaker card on sentence exercises ----
+  // ---- Render: host card on the learn screen, speaker card on sentence
+  // exercises, and a compact host strip (portrait + name, no intro) on
+  // every other exercise, so the talking animation always has a visible
+  // portrait wherever speech can play. Review sessions have no host, so
+  // Lumpy stands in as the guide there.
   const style = document.createElement('style');
   style.textContent = '.character-host,.character-speaker{display:flex;align-items:center;gap:10px;margin-bottom:12px}.character-host img,.character-speaker img{width:64px;height:64px;object-fit:contain;flex:0 0 auto}.character-host p{margin:2px 0 0}';
   if (document.head) document.head.appendChild(style);
@@ -165,6 +182,7 @@
       let html = '';
       if (ex.type === 'learn' && session.host) html = hostCardHTML(session);
       else if (ex.speaker && (ex.type === 'build' || ex.type === 'speak')) html = speakerCardHTML(ex);
+      else html = hostCardHTML({ host: (session && session.host) || 'lumpy' }, true);
       if (!html) return;
       const div = document.createElement('div');
       div.innerHTML = html;

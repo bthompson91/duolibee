@@ -36,7 +36,10 @@
     u.onstart = () => { if (active === u) { hook('duolibeeSpeechStart'); status('Playing: ' + (english ? 'English' : selected.malay ? 'Malay fallback' : 'Tagalog/Filipino')); } };
     u.onend = () => { if (active === u) { active = null; hook('duolibeeSpeechEnd'); status('Playback complete.'); } };
     u.onerror = e => { if (active === u) { active = null; hook('duolibeeSpeechEnd'); status('Speech error: ' + e.error + '. Tap Play to retry.'); } };
-    try { speechSynthesis.resume(); speechSynthesis.speak(u); } catch (e) { active = null; status('Speech could not start: ' + e.message); }
+    // Start the talking animation here as well as on onstart: iOS often
+    // never fires the utterance events, and the portrait must move while
+    // the line plays. Starting twice is harmless (startTalking restarts).
+    try { speechSynthesis.resume(); hook('duolibeeSpeechStart'); speechSynthesis.speak(u); } catch (e) { active = null; hook('duolibeeSpeechEnd'); status('Speech could not start: ' + e.message); }
   }
   speak = (text, slow) => play(text, false, slow);
   testVoice = () => play('Magandang araw! Ako si Lumpy.');

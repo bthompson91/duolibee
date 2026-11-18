@@ -371,6 +371,82 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   assert.ok(played.completed, 'lesson 1 completes with the character layer active, steps: ' + played.steps);
   console.log('10. lesson 1 plays through and completes with characters on: OK');
 
+  // Speech start animates the host portrait when no speaker portrait is
+  // on screen (learn screen and the compact host strip). The speaker
+  // lookup is suppressed for this check so the host fallback is exercised.
+  const hostSeen = [];
+  vm.runInContext(`
+    (function () {
+      const origGet = document.getElementById;
+      document.getElementById = (id) => (id === 'speaker-portrait' ? null : origGet(id));
+      const img = document.getElementById('host-portrait');
+      img.dataset.character = 'lumpy';
+      img.dataset.state = 'neutral';
+      window.duolibeeSpeechStart();
+      document.getElementById = origGet;
+    })()
+  `, sandbox);
+  for (let i = 0; i < 10; i++) {
+    await sleep(40);
+    hostSeen.push(vm.runInContext(`document.getElementById('host-portrait').src`, sandbox));
+  }
+  vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
+  const hostSettled = vm.runInContext(`document.getElementById('host-portrait').src`, sandbox);
+  assert.ok(hostSeen.includes('assets/characters/lumpy-neutral-open.png'), 'speech start animates the host portrait, saw: ' + [...new Set(hostSeen)].join(', '));
+  assert.strictEqual(hostSettled, 'assets/characters/lumpy-neutral-closed.png', 'speech end settles the host portrait on mouth-closed');
+  console.log('11. speech start/end hooks drive the host portrait when no speaker portrait is present: OK');
+
+  // Every exercise without a speaker card shows a compact host strip
+  // (portrait + name, no intro), so speech always has a portrait to
+  // animate. Choice exercises have no speaker.
+  const strip = vm.runInContext(`
+    (function () {
+      startLesson(1);
+      const idx = session.exercises.findIndex(e => e.type === 'choice');
+      index = idx; renderExercise();
+      return __captured.children[0] ? __captured.children[0].innerHTML : '';
+    })()
+  `, sandbox);
+  assert.ok(strip.includes('host-portrait'), 'choice exercise shows a host portrait');
+  assert.ok(strip.includes('Lumpy'), 'choice exercise names the lesson host');
+  assert.ok(strip.includes('assets/characters/lumpy-welcome.png'), 'choice exercise host portrait art path present');
+  assert.ok(!strip.includes(escIntroStart), 'compact host strip has no intro text');
+  console.log('12. choice exercise shows a compact host strip (portrait, no intro): OK');
+
+  // play() starts the talking animation at speak time, even when the
+  // utterance onstart event never fires (iOS drops it): the portrait
+  // must move while the line plays, and settle when onend fires.
+  const playSeen = [];
+  const playSettled = await (async () => {
+    vm.runInContext(`
+      (function () {
+        SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
+        window.__spoken = [];
+        speechSynthesis = {
+          getVoices: () => [{ lang: 'fil-PH', default: true, name: 'Test Filipino' }],
+          cancel() {}, resume() {},
+          speak(u) { window.__spoken.push(u); },
+        };
+        const img = document.getElementById('speaker-portrait');
+        img.dataset.character = 'jetjet';
+        img.dataset.state = 'happy';
+        speak('kumusta');
+      })()
+    `, sandbox);
+    for (let i = 0; i < 10; i++) {
+      await sleep(40);
+      playSeen.push(vm.runInContext(`document.getElementById('speaker-portrait').src`, sandbox));
+    }
+    // No onstart was ever fired by the stub. Fire onend by hand.
+    vm.runInContext(`(function () { const u = window.__spoken[0]; if (u && u.onend) u.onend(); })()`, sandbox);
+    const settled = vm.runInContext(`document.getElementById('speaker-portrait').src`, sandbox);
+    vm.runInContext(`speechSynthesis = undefined;`, sandbox);
+    return settled;
+  })();
+  assert.ok(playSeen.includes('assets/characters/jetjet-happy-open.png'), 'play() animates the portrait without any onstart event, saw: ' + [...new Set(playSeen)].join(', '));
+  assert.strictEqual(playSettled, 'assets/characters/jetjet-happy-closed.png', 'onend settles the portrait on mouth-closed');
+  console.log('13. play() starts the animation without onstart; onend settles it: OK');
+
   console.log('CHARACTERS: PASS');
   process.exit(0);
 })().catch((e) => { console.error('CHARACTERS: FAIL', e); process.exit(1); });
