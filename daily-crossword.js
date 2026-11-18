@@ -6,7 +6,7 @@ const style=document.createElement('style');style.textContent=`
 .cw-box{position:relative;min-width:0;aspect-ratio:1}
 .crossword-card .cw-cell{display:block;box-sizing:border-box;width:100%;min-width:0;height:100%;padding:6px 0 0;margin:0;text-align:center;text-transform:uppercase;font-size:18px;font-weight:700;border:1px solid var(--line,#777);border-radius:3px;background:#F6F0E3;color:#111;appearance:none;-webkit-appearance:none}
 .cw-num{position:absolute;top:1px;left:2px;font-size:9px;line-height:1;color:#111;pointer-events:none;z-index:1}
-.cw-cell:disabled{background:#DCE9F8;border-color:#7FA8D9;opacity:1;-webkit-text-fill-color:#111}
+.cw-cell:disabled{background:#F0E2B8;border-color:#B49A55;opacity:1;-webkit-text-fill-color:#111}
 .crossword-card .cw-cell.cw-active:not(:disabled){background:#F3E8CC}
 .crossword-card .cw-cell.cw-current:not(:disabled){background:#E7D3A0;outline:2px solid #B49A55;outline-offset:-2px}
 .cw-box.cw-current::after{content:'→';position:absolute;top:1px;right:2px;font-size:10px;line-height:1;color:#111;pointer-events:none;z-index:1}
