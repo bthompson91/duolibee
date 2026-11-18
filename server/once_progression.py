@@ -37,6 +37,20 @@ def next_unanswered(missions,current,answered):
     return None
 
 
+DEJA_VU="Deja vu! I think we've talked about this one before — let's try it again. "
+def next_repeat(missions,current):
+    keys=list(missions)
+    if not keys:return None
+    start=keys.index(current) if current in keys else -1
+    current_key=prompt_key(missions[current]) if current in missions else ''
+    for offset in range(1,len(keys)+1):
+        candidate=keys[(start+offset)%len(keys)]
+        key=prompt_key(missions[candidate])
+        if key and key!=current_key:
+            return candidate
+    return keys[(start+1)%len(keys)]
+
+
 class OneAnswerStore(BeeThreadStore):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
@@ -85,7 +99,7 @@ class OneAnswerStore(BeeThreadStore):
         if state.get('completed',{}).get('theme-response'):
             self.credit(c,subject,state['missionSnapshot'])
             if state['status']=='active':state['status']='completed';changed=True
-        elif state['status']=='active' and prompt_key(mission) in self.answered(c,subject):
+        elif state['status']=='active' and not state.get('repeat') and prompt_key(mission) in self.answered(c,subject):
             state['status']='skipped_mastered';changed=True
         if changed:self.save(c,state)
 
@@ -98,13 +112,20 @@ class OneAnswerStore(BeeThreadStore):
         if state['status'] in ('completed','ended_incomplete'):
             self.event(c,subject,f"episode:{row['episode']}:summary",dict(role='bee',text=session_feedback(state),kind='feedback'))
         mission_id=next_unanswered(self.catalog(),state['missionId'],self.answered(c,subject))
+        repeat=False
         if mission_id is None:
-            self.event(c,subject,'all-new-prompts-covered',dict(role='bee',text="That's all the new prompts currently available. I'll keep your thread here and won't repeat answered questions automatically.",kind='notice'))
-            if state['status']!='practice_complete':
-                state['status']='practice_complete';state['revision']+=1;self.save(c,state)
-            return
+            mission_id=next_repeat(self.catalog(),state['missionId'])
+            if mission_id is None:
+                self.event(c,subject,'all-new-prompts-covered',dict(role='bee',text="That's all the new prompts currently available. I'll keep your thread here and won't repeat answered questions automatically.",kind='notice'))
+                if state['status']!='practice_complete':
+                    state['status']='practice_complete';state['revision']+=1;self.save(c,state)
+                return
+            repeat=True
         recent=[json.loads(r[0]) for r in c.execute('SELECT payload FROM bee_thread_events WHERE subject=? ORDER BY id DESC LIMIT 8',(subject,)).fetchall()][::-1]
         new=self.new_state(state['id'],mission_id,row['vocab'],state['revision']+1,recent)
+        if repeat:
+            new['repeat']=True
+            new['messages'][0]['text']=DEJA_VU+new['messages'][0]['text']
         self.save(c,new)
         c.execute('UPDATE bee_threads SET episode=episode+1,synced=0 WHERE subject=?',(subject,))
         self.sync(c,subject)
