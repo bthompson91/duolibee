@@ -17,12 +17,12 @@
     }
     const popup = document.createElement('div');
     popup.className = 'mascot-popup';
-    popup.style.cssText = 'display:flex;align-items:center;gap:8px;background:#F6F0E3;border:2px solid #7FA8D9;border-radius:16px;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.15);animation:mascot-pop 2.2s ease forwards';
+    popup.style.cssText = 'display:flex;align-items:center;gap:8px;background:#F6F0E3;border:2px solid #B49A55;border-radius:16px;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.15);animation:mascot-pop 2.2s ease forwards';
     const image = mascotImage(file, 'Lumpy', 'mascot-popup-image');
     image.style.cssText = 'width:64px;height:64px;object-fit:contain;margin:0';
     const bubble = document.createElement('div');
     bubble.textContent = message;
-    bubble.style.cssText = 'font-weight:700;font-size:14px;color:#3c3c3c;max-width:240px';
+    bubble.style.cssText = 'font-weight:700;font-size:16px;color:#3c3c3c;max-width:240px';
     popup.appendChild(image);
     popup.appendChild(bubble);
     layer.appendChild(popup);

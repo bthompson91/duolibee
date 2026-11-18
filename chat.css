@@ -9,9 +9,9 @@
 .im-thread .im-row{display:flex;margin:12px 0}.im-thread .im-row.mine{justify-content:flex-end}
 .im-thread .im-bubble{max-width:86%;padding:12px 15px;border-radius:17px 17px 17px 3px;background:#EAE1CC!important;color:#151515!important;white-space:pre-wrap;overflow-wrap:anywhere;font-size:1rem;line-height:1.5;font-weight:400}
 .im-thread .mine .im-bubble{background:#DCE9F8!important;border-radius:17px 17px 3px 17px}
-.im-thread .im-feedback .im-bubble{border-left:3px solid #6E9BD1}
+.im-thread .im-feedback .im-bubble{border-left:3px solid #B49A55}
 .im-thread .im-composer{display:flex;flex-wrap:wrap;gap:8px;position:sticky;bottom:0;padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:#F6F0E3!important;border-top:1px solid #DCD2B8}
 .im-thread .im-composer textarea{flex:1 1 100%;min-width:0;border:1px solid #aaa;border-radius:12px;padding:12px;font-size:1rem;line-height:1.4;background:#F6F0E3!important;color:#151515!important}
 .im-thread button{min-height:44px;padding:9px 14px;margin:3px;border:1px solid #777;border-radius:10px;background:#EFE7D3;color:#151515;font-size:1rem;font-weight:500;cursor:pointer}
-.im-thread button.primary{background:#A8C4E6;color:#1f2b32;border-color:#7FA8D9}.im-thread button:disabled{opacity:.55;cursor:wait}.im-thread button:focus-visible,.im-thread textarea:focus-visible,.im-thread summary:focus-visible{outline:3px solid #6E9BD1;outline-offset:2px}
+.im-thread button.primary{background:#D9BC72;color:#1f2b32;border-color:#B49A55}.im-thread button:disabled{opacity:.55;cursor:wait}.im-thread button:focus-visible,.im-thread textarea:focus-visible,.im-thread summary:focus-visible{outline:3px solid #B49A55;outline-offset:2px}
 #chat-preference label{display:block;line-height:1.6}
