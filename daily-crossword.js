@@ -1,5 +1,4 @@
 (()=>{
-const VERSION='0.38.0';document.documentElement.dataset.appVersion=VERSION;const badge=document.querySelector('.brand .ver');if(badge)badge.textContent='v'+VERSION;
 const style=document.createElement('style');style.textContent=`
 #app:has(.crossword-card){min-width:0;max-width:100%;box-sizing:border-box}
 .crossword-card{min-width:0;max-width:100%;box-sizing:border-box;container-type:inline-size}

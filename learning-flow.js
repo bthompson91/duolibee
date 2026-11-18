@@ -58,6 +58,4 @@
       button.onclick=()=>toggleTheme(THEMES[Number(button.dataset.themeIndex)].name);
     });
   };
-  const badge=document.querySelector('.brand .ver');
-  if(badge)badge.textContent='v0.13.0';
 })();
