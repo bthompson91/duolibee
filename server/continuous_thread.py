@@ -15,7 +15,7 @@ def session_feedback(state):
     complete = state.get('status') == 'completed'
     parts = ["Nice work finishing that practice!" if complete else "Let's pause that practice here."]
     if not attempts:
-        parts.append("I don't have enough assessed Tagalog to judge your language yet. Try a short Tagalog answer next time; Taglish is okay.")
+        parts.append("I don't have enough Tagalog from you this time to say much about it. Try a short Tagalog answer next time; Taglish is okay.")
     else:
         averages = {}
         for dimension in ('communication', 'grammar', 'vocabulary', 'naturalness'):
@@ -24,23 +24,23 @@ def session_feedback(state):
             if values:
                 averages[dimension] = sum(values) / len(values)
         score = sum(a['score'] for a in attempts) / len(attempts)
-        parts.append("Your Tagalog was mostly clear in this exchange." if score >= 7 else "You made a start with Tagalog, and there's still room to practise.")
+        parts.append("Your Tagalog came through mostly clear — nice!" if score >= 7 else "You made a start — that's the hard part done.")
         if averages:
             lowest = min(averages, key=averages.get)
             if averages[lowest] < 3:
-                parts.append({
-                    'communication': 'Next time, focus on answering the question directly with a short reply.',
-                    'grammar': 'Next time, practise word order in a short sentence.',
-                    'vocabulary': 'Next time, try using a familiar Tagalog word in your answer.',
-                    'naturalness': 'Next time, practise a short, everyday way of saying your answer.'
+                parts.append('One thing to play with next time: ' + {
+                    'communication': 'answering the question directly with a short reply.',
+                    'grammar': 'word order in a short sentence.',
+                    'vocabulary': 'slipping a familiar Tagalog word into your answer.',
+                    'naturalness': 'a short, everyday way of saying your answer.'
                 }[lowest])
-        parts.append('These are AI estimates, not a formal language test.')
+        parts.append("Take my word for it with a pinch of salt — I'm a lumpia, not a language examiner.")
     assisted = any(v >= 2 for v in state.get('hints', {}).values()) or any(
         g.get('mode') == 'assisted' for g in state.get('completed', {}).values())
     if assisted:
-        parts.append('You used a starter or example; try a similar reply without that help next time.')
+        parts.append("You leaned on a starter or example this time — that's what they're there for. Next time, see if you can say it on your own.")
     elif attempts:
-        parts.append('You did not use a starter or example from the hint button.')
+        parts.append('And you did it all without a starter or example — nice, that is the real thing.')
     return ' '.join(parts)
 
 
