@@ -16,8 +16,9 @@
 //      permission granted first, as a separate permission from the speech
 //      prompt. On iOS the app requests the microphone via getUserMedia
 //      before starting recognition (desktop browsers skip this step).
-//   3. If the service rejects the language tag, the app retries once
-//      with the other Tagalog tag ('fil-PH', then 'tl-PH').
+//   3. If the service rejects the language tag, the app retries with
+//      the other Tagalog tag, then with English as a last resort
+//      ('fil-PH', 'tl-PH', 'en-US').
 // Only when those are exhausted does the exercise become a written
 // question, with no penalty. Some failures are terminal and retrying
 // cannot help, so they are not presented as "try again":
@@ -108,7 +109,11 @@
   // on or the browser is changed).
   let speechUnavailable = false;
   let recognizer = null;
-  const SPEAK_LANGS = ['fil-PH', 'tl-PH'];
+  // Tried in order. 'en-US' is a last resort: if Filipino is not set up as
+  // a dictation language on the device, both Tagalog tags are rejected, and
+  // an English model transcribing the word phonetically can still pass the
+  // generous matcher. It is only reached after both Tagalog tags fail.
+  const SPEAK_LANGS = ['fil-PH', 'tl-PH', 'en-US'];
   function writtenQuestionFor(ex) {
     const options = seededShuffle([...new Set([ex.item.e, ...distractors(ex.item)])], index + 201);
     return { type: 'choice', prompt: 'What does “' + ex.item.t + '” mean?', options, answer: options.indexOf(ex.item.e), srsKeys: ex.srsKeys };

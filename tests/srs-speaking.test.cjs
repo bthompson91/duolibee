@@ -391,6 +391,49 @@ for (const f of order) {
   assert.strictEqual(langFallbackAfter.heard, langFallback.item, 'the fallback language should hear the word');
   assert.strictEqual(langFallbackAfter.type, 'speak', 'a successful fallback must not swap the exercise');
 
+
+  // G. Full chain: both Tagalog tags rejected, English hears the word.
+  vm.runInContext(`
+    window.__langsTried = [];
+    window.webkitSpeechRecognition = class {
+      constructor() {}
+      abort() {}
+      start() {
+        const self = this;
+        window.__langsTried.push(self.lang);
+        setTimeout(() => {
+          if (self.lang === 'en-US') {
+            if (self.onresult) self.onresult({ results: [{ 0: { transcript: window.__fakeTranscript || 'test' } }] });
+            if (self.onend) self.onend();
+          } else {
+            if (self.onerror) self.onerror({ error: 'service-not-allowed' });
+            if (self.onend) self.onend();
+          }
+        }, 0);
+      }
+    };
+  `, sandbox);
+  const fullChain = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 8); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      window.__fakeTranscript = session.exercises[idx].item.t;
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx, item: session.exercises[idx].item.t };
+    })()
+  `, sandbox);
+  await sleep2(80);
+  const fullChainAfter = vm.runInContext(`
+    (function () {
+      return { langs: window.__langsTried.join(','), heard: session.speakHeard, type: session.exercises[index].type };
+    })()
+  `, sandbox);
+  console.log('full language chain:', JSON.stringify(fullChainAfter));
+  assert.strictEqual(fullChainAfter.langs, 'fil-PH,tl-PH,en-US', 'both Tagalog tags failing should reach en-US');
+  assert.strictEqual(fullChainAfter.heard, fullChain.item, 'the English fallback should hear the word');
+  assert.strictEqual(fullChainAfter.type, 'speak', 'a successful fallback must not swap the exercise');
+
   // ---- Speech recognition errors: terminal ones auto-swap, network does not ----
   vm.runInContext(`
     window.__fakeError = 'network';
