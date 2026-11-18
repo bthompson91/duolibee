@@ -11,7 +11,7 @@
   const read=()=>{try{const x=JSON.parse(localStorage.getItem(storeKey())||'{}');return {event:Math.max(0,Number(x.event)||0),lesson:Math.max(0,Number(x.lesson)||0)};}catch(_){return {event:0,lesson:0};}};
   function completed(){try{return Math.min(100,Math.max(0,...Object.keys(state.completed||{}).map(k=>parseInt(String(k).replace(/[^0-9]/g,''),10)).filter(Number.isFinite)));}catch(_){return 0;}}
   function enabled(){try{return localStorage.getItem('duolibee-chat-enabled-v1')==='true';}catch(_){return false;}}
-  const style=document.createElement('style');style.textContent='.bee-chat-badge{display:inline-flex;align-items:center;justify-content:center;min-width:1.15em;height:1.15em;margin-left:6px;padding:2px 4px;border-radius:999px;background:#b51e28;color:#fff;font:700 12px system-ui;vertical-align:middle}.bee-chat-badge[hidden]{display:none}';document.head.append(style);
+  const style=document.createElement('style');style.textContent='.bee-chat-badge{display:inline-flex;align-items:center;justify-content:center;min-width:1.15em;height:1.15em;margin-left:6px;padding:2px 4px;border-radius:999px;background:#A64B45;color:#fff;font:700 12px system-ui;vertical-align:middle}.bee-chat-badge[hidden]{display:none}';document.head.append(style);
   function render(){
     const tab=document.getElementById('tab-chat');if(!tab)return;
     let badge=document.getElementById('bee-chat-badge');

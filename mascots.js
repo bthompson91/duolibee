@@ -17,7 +17,7 @@
     }
     const popup = document.createElement('div');
     popup.className = 'mascot-popup';
-    popup.style.cssText = 'display:flex;align-items:center;gap:8px;background:#fff;border:2px solid #58cc02;border-radius:16px;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.15);animation:mascot-pop 2.2s ease forwards';
+    popup.style.cssText = 'display:flex;align-items:center;gap:8px;background:#F6F0E3;border:2px solid #7FA8D9;border-radius:16px;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.15);animation:mascot-pop 2.2s ease forwards';
     const image = mascotImage(file, 'DUOLIBEE mascot', 'mascot-popup-image');
     image.style.cssText = 'width:64px;height:64px;object-fit:contain;margin:0';
     const bubble = document.createElement('div');
