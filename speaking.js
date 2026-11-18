@@ -2,22 +2,35 @@
 //
 // One 'speak' exercise per lesson: the learner hears the model (or reads the
 // Tagalog), taps the microphone, says it, and taps Check. Grading uses the
-// browser's own speech recognition (fil-PH) with generous matching, because
+// browser's own speech recognition with generous matching, because
 // recognition is imperfect — especially for learners. Nothing is graded
 // until the learner taps Check, so a bad recognition pass can be re-tried.
 //
-// Some failures are terminal and retrying cannot help, so they are not
-// presented as "try again":
-//   - 'service-not-allowed': the recognition service itself is unavailable
-//     in this browser on this device. On iPhones it needs Siri turned on,
-//     and it does not work in some in-app browsers (WKWebView). The
-//     exercise becomes a written question, and later speak exercises in
-//     the same session do the same, so the lesson never dead-ends.
-//   - 'not-allowed' (microphone denied) and 'audio-capture' (no microphone):
+// The recognition service belongs to the browser/device, not to DUOLIBEE,
+// so when it cannot start the app tries to fix the cause before giving up:
+//   1. In-app browsers on iPhones run in a plain webview that does not
+//      offer the service at all. The app detects that and says so plainly
+//      (open the site in Safari), instead of offering a microphone that
+//      can never work.
+//   2. On iPhones, speech recognition sometimes needs the microphone
+//      permission granted first, as a separate permission from the speech
+//      prompt. On iOS the app requests the microphone via getUserMedia
+//      before starting recognition (desktop browsers skip this step).
+//   3. If the service rejects the language tag, the app retries once
+//      with the other Tagalog tag ('fil-PH', then 'tl-PH').
+// Only when those are exhausted does the exercise become a written
+// question, with no penalty. Some failures are terminal and retrying
+// cannot help, so they are not presented as "try again":
+//   - 'service-not-allowed': the service is unavailable in this browser
+//     on this device (Siri off, in-app browser, or a browser policy).
+//     Later speak exercises in the same session become written questions
+//     too, so the lesson never dead-ends. Reloading gives speaking
+//     another chance.
+//   - 'not-allowed' (microphone denied) and 'audio-capture' (no mic):
 //     this exercise becomes a written question; the next speak exercise
 //     still offers the microphone, in case the permission is fixed.
-//   - 'network' and 'no-speech': retryable — the learner is asked to try
-//     the microphone again.
+//   - 'network' and 'no-speech': retryable — the learner is asked to
+//     try the microphone again.
 // Speaking can also be switched off in Settings, in which case speak
 // exercises become written questions at render time.
 //
@@ -29,6 +42,22 @@
   }
   function speakSupported() {
     return !!recognitionClass();
+  }
+  function userAgent() {
+    return (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  }
+  function isIOS() {
+    const ua = userAgent();
+    return /iPad|iPhone|iPod/.test(ua) || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+  function isInAppBrowser() {
+    // On iOS every browser uses WebKit, but only Safari itself offers the
+    // speech recognition service. In-app browsers run in a plain webview:
+    // their user agent has no "Safari/" token, or names another browser
+    // (Chrome, Firefox and Edge on iOS are all webviews too).
+    if (!isIOS()) return false;
+    const ua = userAgent();
+    return !/Safari\//.test(ua) || /CriOS|FxiOS|EdgiOS|GSA|FBAN|FBAV|Instagram|Line|Twitter/.test(ua);
   }
   function levenshtein(a, b) {
     const x = String(a), y = String(b);
@@ -75,6 +104,7 @@
   // on or the browser is changed).
   let speechUnavailable = false;
   let recognizer = null;
+  const SPEAK_LANGS = ['fil-PH', 'tl-PH'];
   function writtenQuestionFor(ex) {
     const options = seededShuffle([...new Set([ex.item.e, ...distractors(ex.item)])], index + 201);
     return { type: 'choice', prompt: 'What does “' + ex.item.t + '” mean?', options, answer: options.indexOf(ex.item.e), srsKeys: ex.srsKeys };
@@ -99,10 +129,38 @@
     }
     return true;
   }
-  startSpeaking = function () {
+  // On iOS, ask for the microphone first: speech recognition sometimes
+  // needs that permission granted separately before it will start. If the
+  // microphone is denied, the normal error path explains it; any other
+  // microphone problem still lets recognition have a try.
+  function primeMicThen(next) {
+    const media = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+    if (!media) { next(); return; }
+    let done = false;
+    const finish = () => { if (!done) { done = true; next(); } };
+    try {
+      const p = navigator.mediaDevices.getUserMedia({ audio: true });
+      if (p && typeof p.then === 'function') {
+        p.then((stream) => {
+          try { (stream.getTracks ? stream.getTracks() : []).forEach((tr) => { if (tr.stop) tr.stop(); }); } catch (e) { /* ignore */ }
+          finish();
+        }, (err) => {
+          if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
+            swapToWritten('Microphone access was denied, so this became a written question. No penalty — allow the microphone in your browser settings and the next speaking question will offer the microphone again.');
+          } else {
+            finish();
+          }
+        });
+      } else {
+        finish();
+      }
+    } catch (e) {
+      finish();
+    }
+  }
+  function attemptRecognition(langIndex) {
     const ex = session && session.exercises && session.exercises[index];
-    if (!ex || ex.type !== 'speak') return;
-    if (session._answeredIndex === index) return;
+    if (!ex || ex.type !== 'speak' || session._answeredIndex === index) return;
     const Recog = recognitionClass();
     if (!Recog) {
       speechUnavailable = true;
@@ -112,7 +170,7 @@
     try { if (recognizer) recognizer.abort(); } catch (e) { /* already stopped */ }
     const rec = new Recog();
     recognizer = rec;
-    rec.lang = 'fil-PH';
+    rec.lang = SPEAK_LANGS[langIndex] || SPEAK_LANGS[0];
     rec.interimResults = false;
     rec.maxAlternatives = 3;
     let attemptFailed = false;
@@ -128,9 +186,14 @@
     rec.onerror = (event) => {
       attemptFailed = true;
       const err = (event && event.error) || '';
-      if (err === 'service-not-allowed' || err === 'language-not-supported') {
+      if ((err === 'service-not-allowed' || err === 'language-not-supported') && langIndex + 1 < SPEAK_LANGS.length) {
+        // The service may know the language under its other tag; try once.
+        attemptRecognition(langIndex + 1);
+      } else if (err === 'service-not-allowed' || err === 'language-not-supported') {
         speechUnavailable = true;
-        swapToWritten('Speech recognition isn’t available in this browser on this device — on iPhones it needs Siri turned on, and it doesn’t work in some in-app browsers. This became a written question instead. No penalty.');
+        swapToWritten(isIOS()
+          ? 'Speech recognition isn’t available in this browser on this device. On iPhones it needs Siri turned on (Settings → Siri) and the microphone allowed for Safari. This became a written question instead. No penalty.'
+          : 'Speech recognition isn’t available in this browser on this device. This became a written question instead. No penalty.');
       } else if (err === 'not-allowed') {
         swapToWritten('Microphone access was denied, so this became a written question. No penalty — allow the microphone in your browser settings and the next speaking question will offer the microphone again.');
       } else if (err === 'audio-capture') {
@@ -145,6 +208,28 @@
       if (!attemptFailed && !session.speakHeard) setStatus('Didn’t catch that — tap the microphone and try again.');
     };
     try { rec.start(); } catch (e) { setStatus('Could not start listening: ' + e.message); }
+  }
+  startSpeaking = function () {
+    const ex = session && session.exercises && session.exercises[index];
+    if (!ex || ex.type !== 'speak') return;
+    if (session._answeredIndex === index) return;
+    if (!recognitionClass()) {
+      speechUnavailable = true;
+      swapToWritten('Speaking isn’t supported in this browser, so this became a written question. No penalty.');
+      return;
+    }
+    if (isInAppBrowser()) {
+      // No code can enable the service in a plain webview; say so plainly
+      // instead of offering a microphone that can never work.
+      speechUnavailable = true;
+      swapToWritten('This looks like an in-app browser, which doesn’t offer speech recognition on iPhones. Open duolibee in Safari to use speaking — this became a written question instead. No penalty.');
+      return;
+    }
+    if (isIOS()) {
+      primeMicThen(() => attemptRecognition(0));
+    } else {
+      attemptRecognition(0);
+    }
   };
   checkSpeaking = function () {
     const ex = session && session.exercises && session.exercises[index];

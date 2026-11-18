@@ -299,6 +299,98 @@ for (const f of order) {
   assert.strictEqual(fallback.kept, true, 'fallback must keep srsKeys');
 
 
+
+  // ---- Speaking, part 2: the app tries to make it work before falling back ----
+  // (These run before the terminal-error tests below, which set the
+  // session-wide "speech unavailable" flag.)
+  const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // P. iOS Safari: the microphone is primed via getUserMedia first, then
+  // recognition starts and hears the word.
+  vm.runInContext(`
+    window.__langsTried = [];
+    window.__primerCalled = false;
+    window.webkitSpeechRecognition = class {
+      constructor() {}
+      abort() {}
+      start() {
+        const self = this;
+        window.__langsTried.push(self.lang);
+        setTimeout(() => {
+          if (self.onresult) self.onresult({ results: [{ 0: { transcript: window.__fakeTranscript || 'test' } }] });
+          if (self.onend) self.onend();
+        }, 0);
+      }
+    };
+    navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Mobile/15E148 Safari/604.1';
+    navigator.mediaDevices = { getUserMedia: () => { window.__primerCalled = true; return Promise.resolve({ getTracks: () => [{ stop() {} }] }); } };
+  `, sandbox);
+  const primer = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 6); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      window.__fakeTranscript = session.exercises[idx].item.t;
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx, item: session.exercises[idx].item.t };
+    })()
+  `, sandbox);
+  await sleep2(80);
+  const primerAfter = vm.runInContext(`
+    (function () {
+      return { primer: window.__primerCalled, langs: window.__langsTried.join(','), heard: session.speakHeard, type: session.exercises[index].type };
+    })()
+  `, sandbox);
+  console.log('iOS primer + recognition:', JSON.stringify(primerAfter));
+  assert.strictEqual(primerAfter.primer, true, 'on iOS the microphone should be primed first');
+  assert.strictEqual(primerAfter.langs, 'fil-PH', 'recognition should start with fil-PH');
+  assert.strictEqual(primerAfter.heard, primer.item, 'the spoken word should be heard');
+  assert.strictEqual(primerAfter.type, 'speak', 'a working recognition must not swap the exercise');
+
+  // F. Language fallback: fil-PH rejected, tl-PH hears the word.
+  vm.runInContext(`
+    window.__langsTried = [];
+    delete navigator.mediaDevices;
+    navigator.userAgent = '';
+    window.webkitSpeechRecognition = class {
+      constructor() {}
+      abort() {}
+      start() {
+        const self = this;
+        window.__langsTried.push(self.lang);
+        setTimeout(() => {
+          if (self.lang === 'fil-PH') {
+            if (self.onerror) self.onerror({ error: 'service-not-allowed' });
+            if (self.onend) self.onend();
+          } else {
+            if (self.onresult) self.onresult({ results: [{ 0: { transcript: window.__fakeTranscript || 'test' } }] });
+            if (self.onend) self.onend();
+          }
+        }, 0);
+      }
+    };
+  `, sandbox);
+  const langFallback = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 7); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak');
+      window.__fakeTranscript = session.exercises[idx].item.t;
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx, item: session.exercises[idx].item.t };
+    })()
+  `, sandbox);
+  await sleep2(80);
+  const langFallbackAfter = vm.runInContext(`
+    (function () {
+      return { langs: window.__langsTried.join(','), heard: session.speakHeard, type: session.exercises[index].type };
+    })()
+  `, sandbox);
+  console.log('language fallback:', JSON.stringify(langFallbackAfter));
+  assert.strictEqual(langFallbackAfter.langs, 'fil-PH,tl-PH', 'a rejected fil-PH should retry once with tl-PH');
+  assert.strictEqual(langFallbackAfter.heard, langFallback.item, 'the fallback language should hear the word');
+  assert.strictEqual(langFallbackAfter.type, 'speak', 'a successful fallback must not swap the exercise');
+
   // ---- Speech recognition errors: terminal ones auto-swap, network does not ----
   vm.runInContext(`
     window.__fakeError = 'network';
