@@ -11,12 +11,11 @@ voice (the `speaker` field on each sentence).
 
 Both languages are generated:
   * Tagalog (tl): the fil-PH voices, one per character.
-  * English (en): the English meanings/translations, in en-US neural voices
-    matched by the character's gender, with the same per-character
-    rate/pitch tweaks as the Tagalog clips, so e.g. Jetjet still sounds
-    pitched-up and Lola still sounds slow in English too. (The English is
-    the translation the learner already knows, so it is spoken with a
-    native English voice rather than a Filipino voice reading English.)
+  * English (en): the English meanings/translations. Lumpy, Tito Bong,
+    Tita Baby and Lola Joli speak English in their own Filipino voices
+    (Angelo/Blessica); Ate Crystal and Jetjet use en-US neural voices
+    (Aria/Guy). All keep the same per-character rate/pitch tweaks as the
+    Tagalog clips.
 
 Voice settings live in CHAR_SETTINGS / TL_VOICES / EN_VOICES below. To
 re-voice a character, change the maps and re-run: files are named by a hash
@@ -64,14 +63,18 @@ TL_VOICES = {
     "lola-joli": "fil-PH-BlessicaNeural",
 }
 
-# English voices: en-US neural voices matched by the character's gender.
+# English voices (Brendan's call, 2026-11-19, after hearing the fil-PH voices
+# read English): Lumpy, Tito Bong, Tita Baby and Lola Joli speak English in
+# their own Filipino voices (Angelo/Blessica), so the English sounds like
+# them. Ate Crystal and Jetjet keep the en-US voices already generated
+# (Aria/Guy) — those files are reused as-is, only the four change.
 EN_VOICES = {
-    "lumpy": "en-US-GuyNeural",
-    "tito-bong": "en-US-GuyNeural",
-    "tita-baby": "en-US-AriaNeural",
+    "lumpy": "fil-PH-AngeloNeural",
+    "tito-bong": "fil-PH-AngeloNeural",
+    "tita-baby": "fil-PH-BlessicaNeural",
     "ate-crystal": "en-US-AriaNeural",
     "jetjet": "en-US-GuyNeural",
-    "lola-joli": "en-US-AriaNeural",
+    "lola-joli": "fil-PH-BlessicaNeural",
 }
 
 CONCURRENCY = 8
@@ -122,6 +125,8 @@ async def main():
     ap.add_argument("--lessons", default="data/lessons.json")
     ap.add_argument("--out", default="assets/audio")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--prune", action="store_true",
+                    help="delete .mp3 files in --out that the new manifest no longer references")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     pairs = collect(args.lessons)
@@ -143,6 +148,14 @@ async def main():
     total = sum(os.path.getsize(os.path.join(args.out, fn)) for fn in set(pairs.values()))
     print(f"phrases: {len(pairs)}  files: {len(set(pairs.values()))}  generated: {gen}  skipped: {skip}")
     print(f"total size: {total / 1024:.0f} KB  manifest: {os.path.join(args.out, 'manifest.json')}")
+    if args.prune:
+        referenced = set(pairs.values())
+        pruned = 0
+        for fn in os.listdir(args.out):
+            if fn.endswith(".mp3") and fn not in referenced:
+                os.remove(os.path.join(args.out, fn))
+                pruned += 1
+        print(f"pruned {pruned} orphaned files")
 
 
 if __name__ == "__main__":
