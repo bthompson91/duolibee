@@ -22,7 +22,7 @@ class DialogueIntegrationTests(unittest.TestCase):
         r=self.message('Ako si Brendan, at ikaw?','a',0)
         self.assertEqual(r.status_code,200)
         d=r.get_json()
-        self.assertTrue(d['beeMessage'].startswith('Ako si Bee!'))
+        self.assertTrue(d['beeMessage'].startswith('Ako si Lumpy!'))
         self.assertTrue(d['beeMessage'].endswith('Taga-saan ka?'))
         self.assertEqual(d['assessment']['feedback'],'')
         self.assertEqual(d['session']['completed']['name']['mode'],'independent')
@@ -47,7 +47,7 @@ class DialogueIntegrationTests(unittest.TestCase):
     def test_no_unsolicited_name_or_origin(self):
         d=self.message('Ako si Alex.','a',0).get_json()
         self.assertEqual(d['beeMessage'],'Taga-saan ka?')
-        self.assertNotIn('Bee',d['beeMessage'])
+        self.assertNotIn('Lumpy',d['beeMessage'])
         self.assertEqual(d['session']['hintLevels'],{})
 
 if __name__=='__main__':unittest.main()

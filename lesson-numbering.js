@@ -39,6 +39,5 @@ try{
   return response;
  };
  if(LESSONS.length&&view==='home')go('home');
- const badge=document.querySelector('.brand .ver');if(badge)badge.textContent='v0.25.0';
 }catch(error){console.error(error);app.replaceChildren();const section=document.createElement('section');section.className='card';const title=document.createElement('h2');title.textContent='Progress migration stopped safely';const message=document.createElement('p');message.textContent=error.message+' Do not reset or clear browser storage.';section.append(title,message);app.append(section);}
 })();

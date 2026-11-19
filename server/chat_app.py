@@ -1,10 +1,12 @@
 """Duolibee: versioned source; Google-authenticated, single-worker backend."""
 from contextlib import contextmanager
 from pathlib import Path
-import hashlib, hmac, json, os, re, secrets, sqlite3, threading, time, uuid
+import base64, hashlib, hmac, json, os, re, secrets, sqlite3, threading, time, uuid
 import requests
 from flask import Flask, jsonify, request, g
 from conversation import DialogueError, apply_decision, response_schema, validate_decision
+import logging
+log=logging.getLogger(__name__)
 VERSION=Path(__file__).with_name('VERSION').read_text(encoding='utf-8').strip()
 BEE_POLICY=Path(__file__).with_name('bee-policy.txt').read_text(encoding='utf-8')
 CONVERSATION_POLICY=Path(__file__).with_name('conversation-policy.txt').read_text(encoding='utf-8')
@@ -14,7 +16,7 @@ MODEL='gemini-3.5-flash-lite'
 ORIGIN='https://bthompson91.github.io'
 CLIENT='953505436719-p73hfncc6p39481s6jaedj975l2a9rul.apps.googleusercontent.com'
 BASE='https://raw.githubusercontent.com/bthompson91/duolibee/main/data/'
-MISSION={'id': 'introductions-midpoint', 'version': 1, 'title': 'Meet the bee', 'fictionalDetailsOnly': True, 'opening': 'Kumusta! Ano ang pangalan mo?', 'goals': [{'id': 'name', 'description': 'Introduce yourself using an invented name', 'prompt': 'Ano ang pangalan mo?', 'hints': ['Tell the bee your invented name in Tagalog.', 'Ako si...', 'Ako si Alex.']}, {'id': 'origin', 'description': 'State a fictional place of origin', 'prompt': 'Taga-saan ka?', 'hints': ['Say where your character is from in Tagalog.', 'Taga-... ako.', 'Taga-Australia ako.']}]}
+MISSION={'id': 'introductions-midpoint', 'version': 1, 'title': 'Meet Lumpy', 'fictionalDetailsOnly': True, 'opening': 'Kumusta! Ano ang pangalan mo?', 'goals': [{'id': 'name', 'description': 'Introduce yourself using an invented name', 'prompt': 'Ano ang pangalan mo?', 'hints': ['Tell Lumpy your invented name in Tagalog.', 'Ako si...', 'Ako si Alex.']}, {'id': 'origin', 'description': 'State a fictional place of origin', 'prompt': 'Taga-saan ka?', 'hints': ['Say where your character is from in Tagalog.', 'Taga-... ako.', 'Taga-Australia ako.']}]}
 
 class InvalidAssessment(ValueError):pass
 class ProviderError(Exception):
@@ -63,6 +65,24 @@ def evaluate(key_path,text,state,mission,missions):
     except (requests.RequestException,OSError):raise ProviderError('connection_or_key_error') from None
     except (ValueError,TypeError,KeyError,AttributeError):raise ProviderError('invalid_assessment') from None
 
+AUDIO_MIME_TYPES={'audio/mp4','audio/mpeg','audio/webm','audio/wav','audio/x-wav','audio/ogg','audio/aac'}
+TRANSCRIBE_MAX_BYTES=512*1024
+def transcribe_audio(key_path,audio_bytes,mime_type):
+    payload={'contents':[{'parts':[{'text':'Transcribe this Tagalog speech exactly. Return only the transcription, with no extra words or explanation.'},{'inlineData':{'mimeType':mime_type,'data':base64.b64encode(audio_bytes).decode()}}]}],'generationConfig':{'maxOutputTokens':256,'thinkingConfig':{'thinkingLevel':'low'},'responseFormat':{'text':{'mimeType':'APPLICATION_JSON','schema':{'type':'object','additionalProperties':False,'required':['transcript'],'properties':{'transcript':{'type':'string'}}}}}}}
+    try:
+        key=key_path.read_text().strip()
+        r=requests.post('https://generativelanguage.googleapis.com/v1beta/models/'+MODEL+':generateContent',headers={'x-goog-api-key':key},json=payload,timeout=(5,60))
+        if r.status_code==429:raise ProviderError('quota_or_rate_limit')
+        if not r.ok:log.warning('transcribe provider error status=%s body=%s',r.status_code,r.text[:500]);raise ProviderError('provider_error')
+        data=r.json();candidates=data.get('candidates',[])
+        if len(candidates)!=1 or candidates[0].get('finishReason')!='STOP':raise InvalidAssessment('incomplete')
+        raw=''.join(p.get('text','') for p in candidates[0].get('content',{}).get('parts',[]) if not p.get('thought'))
+        decoded=json.loads(raw)
+        if not isinstance(decoded,dict) or set(decoded)!={'transcript'} or not isinstance(decoded['transcript'],str):raise InvalidAssessment('fields')
+        return decoded['transcript'].strip()
+    except (requests.RequestException,OSError):raise ProviderError('connection_or_key_error') from None
+    except (ValueError,TypeError,KeyError,AttributeError):raise ProviderError('invalid_assessment') from None
+
 
 def build_catalog(lessons, manifest):
     if not isinstance(lessons,dict) or not isinstance(manifest,dict):raise ValueError('Invalid catalog')
@@ -100,10 +120,10 @@ def introduction_answer(text, goal):
     if not(name or origin or reciprocal):return '',None,False
     gid='origin' if origin or (reciprocal and goal and goal['id']=='origin') else 'name'
     pure=bool(re.fullmatch(r'(?:ano ang pangalan mo|anong pangalan mo|sino ka|taga[- ]saan ka|(?:at )?ikaw(?: naman)?)[?.! ]*',q))
-    return ('Sa kuwento natin, taga-Pilipinas ako.' if gid=='origin' else 'Ako si Bee!'),gid,pure
+    return ('Sa kuwento natin, taga-Pilipinas ako.' if gid=='origin' else 'Ako si Lumpy!'),gid,pure
 
 
-def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limit=30,public_origin=None,google_client_id=None,identity_verifier=None,catalog_loader=None,account_daily_limit=10,shared_minute_limit=5,account_minute_limit=3):
+def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcriber=None,daily_limit=30,public_origin=None,google_client_id=None,identity_verifier=None,catalog_loader=None,account_daily_limit=10,shared_minute_limit=5,account_minute_limit=3):
     if token is None and public_origin is None and google_client_id is None:public_origin,google_client_id=ORIGIN,CLIENT
     if bool(public_origin)!=bool(google_client_id):raise ValueError('Incomplete public configuration')
     if any(type(v) is not int or v<1 for v in (daily_limit,account_daily_limit,shared_minute_limit,account_minute_limit)):raise ValueError('Invalid quota')
@@ -112,7 +132,7 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limi
     db_path=state_dir/'chat.sqlite3';db_path.touch(mode=0o600,exist_ok=True);db_path.chmod(0o600)
     key_path=Path(key_path or Path.home()/'.config/duolibee-chat/gemini.key')
     if not public and not token:raise ValueError('Private test token required')
-    app=Flask(__name__);app.config['MAX_CONTENT_LENGTH']=4096;lock=threading.Lock();cache_lock=threading.Lock();cache={'loaded':0,'missions':None}
+    app=Flask(__name__);app.config['MAX_CONTENT_LENGTH']=1048576;lock=threading.Lock();cache_lock=threading.Lock();cache={'loaded':0,'missions':None}
     @contextmanager
     def db():
         c=sqlite3.connect(db_path,timeout=5);c.row_factory=sqlite3.Row
@@ -167,6 +187,7 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limi
                 hs={x.strip().lower() for x in request.headers.get('Access-Control-Request-Headers','').split(',') if x.strip()}
                 if origin!=public_origin or request.headers.get('Access-Control-Request-Method') not in ('GET','POST','DELETE','OPTIONS') or hs-{'authorization','content-type'}:return fail('Preflight rejected.',403)
                 return '',204
+            if request.path=='/transcribe':return None
             raw=request.headers.get('Authorization','')
             if not raw.startswith('Bearer '):return fail('Google sign-in required.',401)
             try:
@@ -176,6 +197,7 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limi
             except Exception:return fail('Google sign-in could not be verified.',401)
         else:
             if origin or any(h in request.headers for h in ('Forwarded','X-Forwarded-For','X-Real-IP')):return fail('Public/browser access is disabled.',403)
+            if request.path=='/transcribe':return None
             if not hmac.compare_digest(request.headers.get('Authorization','').encode(),('Bearer '+token).encode()):return fail('Local access token required.',401)
     @app.after_request
     def headers(response):
@@ -193,13 +215,32 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,daily_limi
     def missions():
         try:return jsonify(missions=[dict(id=k,title=v['title'],lesson=v['lesson'],goals=[dict(id=g['id'],description=g['description']) for g in v['goals']]) for k,v in catalog().items()])
         except Exception:return fail('Mission catalog unavailable.',503)
+    @app.post('/transcribe')
+    def transcribe():
+        audio=request.get_data()
+        if not audio:return fail('Empty audio.',400)
+        if len(audio)>TRANSCRIBE_MAX_BYTES:return fail('Audio too large.',413)
+        mime=(request.content_type or '').split(';')[0].strip().lower()
+        if mime not in AUDIO_MIME_TYPES:return fail('Unsupported audio type.',400)
+        if not lock.acquire(False):return fail('Busy; try later.',429)
+        try:
+            with db() as c:
+                day=time.strftime('%Y-%m-%d',time.gmtime());minute=int(time.time())//60
+                def count(table,where,args):
+                    row=c.execute('SELECT total FROM '+table+' WHERE '+where,args).fetchone();return row[0] if row else 0
+                if count('usage','day=?',(day,))>=daily_limit or count('minutes','minute=?',(minute,))>=shared_minute_limit:return fail('Shared usage limit reached.',429)
+                c.execute('INSERT INTO usage VALUES (?,1) ON CONFLICT(day) DO UPDATE SET total=total+1',(day,));c.execute('INSERT INTO minutes VALUES (?,1) ON CONFLICT(minute) DO UPDATE SET total=total+1',(minute,));c.execute('DELETE FROM minutes WHERE minute<?',(minute-10,))
+        finally:lock.release()
+        try:transcript=(transcriber or transcribe_audio)(key_path,audio,mime)
+        except ProviderError as error:return fail(error.kind,502)
+        return jsonify(transcript=transcript)
     @app.post('/sessions')
     def start():
         body=request.get_json(silent=True)
         if not isinstance(body,dict) or set(body)-{'missionId','vocabularyThroughLesson','numberingVersion'} or not isinstance(body.get('missionId'),str):return fail('Invalid session fields.',400)
         mid=body['missionId'];limit=body.get('vocabularyThroughLesson',0)
         if type(limit) is not int or not 0<=limit<=100:return fail('Invalid vocabularyThroughLesson.',400)
-        if mid!='introductions-midpoint' and body.get('numberingVersion')!='display-v2':return fail('Reload DUOLIBEE v0.25.0 or newer.',409)
+        if mid!='introductions-midpoint' and body.get('numberingVersion')!='display-v2':return fail('Reload Lumpia Lingo v0.25.0 or newer.',409)
         try:ms={'introductions-midpoint':MISSION} if mid=='introductions-midpoint' else catalog()
         except Exception:return fail('Mission catalog unavailable.',503)
         if mid not in ms:return fail('Unknown mission.',400)

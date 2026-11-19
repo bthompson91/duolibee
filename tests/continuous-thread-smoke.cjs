@@ -40,6 +40,6 @@ const context={console,Map,Set,Promise,queueMicrotask,setTimeout,clearTimeout,Ab
   assert(!find(app,e=>e.textContent==='New lesson chat'));
   signed=false;listeners['duolibee-account']();
   assert(!find(app,e=>e.textContent==='Okay lang'));
-  assert(find(app,e=>e.textContent==='Sign in in Settings and Bee will start chatting here.'));
+  assert(find(app,e=>e.textContent==='Sign in in Settings and Lumpy will start chatting here.'));
   console.log('Frontend smoke checks passed: auto-open, send, inline feedback, automatic continuation, no picker, sign-out isolation.');
 })().catch(e=>{console.error(e);process.exitCode=1});

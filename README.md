@@ -1,12 +1,12 @@
-# DUOLIBEE 🐝🇵🇭
+# Lumpia Lingo 🇵🇭
 
-DUOLIBEE is a playful, Duolingo-inspired Tagalog learning web app. It works entirely in the browser, saves progress locally, and can optionally back up progress to a private Google Drive app-data folder.
+Lumpia Lingo is a playful, Duolingo-inspired Tagalog learning web app. It works entirely in the browser, saves progress locally, and can optionally back up progress to a private Google Drive app-data folder.
 
 ## Highlights
 
 - 60 lessons across 12 units
-- Multiple-choice, typed translation, listening, sentence-building, and matching exercises
-- Spaced-repetition Practice Hub and crown levels for repeated mastery
+- Multiple-choice, typed translation, listening, sentence-building, matching, and speaking exercises (browser speech recognition, with a written-question fallback)
+- Spaced-repetition Practice Hub: each word is scheduled by how you actually answered it — a first-try correct answer advances it, a first-try mistake brings it back soon
 - Daily goals, quests, streaks, streak freezes, automatic streak repair, gems, and hearts
 - Achievements, profile statistics, and confetti rewards
 - Dark mode, adjustable speech rate, sound effects, and progress reset
@@ -14,9 +14,9 @@ DUOLIBEE is a playful, Duolingo-inspired Tagalog learning web app. It works enti
 
 ## Learning and pronunciation
 
-DUOLIBEE uses five exercise types: multiple choice, typed translation, listening, sentence building, and matching. Lessons are stored as static JSON data, so the app runs without a backend.
+Lumpia Lingo uses five exercise types: multiple choice, typed translation, listening, sentence building, and matching. Lessons are stored as static JSON data, so the app runs without a backend.
 
-For audio, DUOLIBEE prefers a Filipino or Tagalog system text-to-speech voice. If one is unavailable, it uses a pronunciation fallback in `pronunciation.js` to guide a generic voice toward Tagalog vowel targets, stress, `ng`, and `mga`. The app clearly identifies when it is using approximate pronunciation rather than a native Tagalog voice.
+For audio, Lumpia Lingo prefers a Filipino or Tagalog system text-to-speech voice. If one is unavailable, it uses a pronunciation fallback in `pronunciation.js` to guide a generic voice toward Tagalog vowel targets, stress, `ng`, and `mga`. The app clearly identifies when it is using approximate pronunciation rather than a native Tagalog voice.
 
 ## Progress sync
 
@@ -59,7 +59,7 @@ The interface includes high-contrast dark-mode surfaces, clear tab highlighting,
 
 ## Run locally
 
-DUOLIBEE is a static web app; no build step or package installation is required.
+Lumpia Lingo is a static web app; no build step or package installation is required.
 
 ```bash
 python3 -m http.server 8000
@@ -77,4 +77,4 @@ GitHub Pages publishes the app directly from the `main` branch, using the reposi
 
 ## Privacy
 
-DUOLIBEE is designed for one user. It has no accounts, social leaderboards, analytics, or external user-data collection. Progress remains in browser storage unless the user explicitly connects Google Drive for private cloud backup.
+Lumpia Lingo is designed for one user. It has no accounts, social leaderboards, analytics, or external user-data collection. Progress remains in browser storage unless the user explicitly connects Google Drive for private cloud backup.

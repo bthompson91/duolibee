@@ -40,7 +40,7 @@
     if(!LESSONS.length)return renderError('The lesson catalog is empty.');
     const next=nextLesson();
     const done=LESSONS.filter(l=>state.completed[l.id]).length;
-    app.innerHTML=`<section class='hero hero-mascot'><div><h1>Magandang araw! 🐝</h1><p>${done}/${LESSONS.length} lessons • ${state.streak}-day streak</p></div></section>`+
+    app.innerHTML=`<section class='hero hero-mascot'><div><h1>Magandang araw!</h1><p>${done}/${LESSONS.length} lessons • ${state.streak}-day streak</p></div></section>`+
       (next?`<section class='card next-lesson'><h2>Next lesson</h2><p><strong>${esc(next.icon)} ${esc(next.title)}</strong></p><button class='primary' data-lesson-id='${next.id}'>Start Lesson ${next.order}</button></section>`:`<section class='card'><h2>🎉 All caught up!</h2><p>You have completed every available lesson.</p></section>`)+
       `<section class='card'><h2>📚 Learn</h2>`+THEMES.map((th,themeIndex)=>{
         const lessons=LESSONS.filter(l=>l.category===th.name);
@@ -58,6 +58,4 @@
       button.onclick=()=>toggleTheme(THEMES[Number(button.dataset.themeIndex)].name);
     });
   };
-  const badge=document.querySelector('.brand .ver');
-  if(badge)badge.textContent='v0.13.0';
 })();

@@ -1283,7 +1283,7 @@
         "description": "Continue the exchange about {theme} with a meaningful Tagalog or Taglish follow-up, relevant detail, or question. Answer the learner's questions before advancing or closing. Do not award credit for an unrelated reply.",
         "prompt": "Tell me a little more about {theme}, or ask me a question.",
         "hints": [
-          "Add one small detail, or ask Bee a related question.",
+          "Add one small detail, or ask Lumpy a related question.",
           "A short Taglish follow-up is okay.",
           "You can ask 'At ikaw?' when it fits the conversation."
         ]

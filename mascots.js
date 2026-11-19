@@ -17,12 +17,12 @@
     }
     const popup = document.createElement('div');
     popup.className = 'mascot-popup';
-    popup.style.cssText = 'display:flex;align-items:center;gap:8px;background:#fff;border:2px solid #58cc02;border-radius:16px;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.15);animation:mascot-pop 2.2s ease forwards';
-    const image = mascotImage(file, 'DUOLIBEE mascot', 'mascot-popup-image');
+    popup.style.cssText = 'display:flex;align-items:center;gap:8px;background:#F6F0E3;border:2px solid #B49A55;border-radius:16px;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.15);animation:mascot-pop 2.2s ease forwards';
+    const image = mascotImage(file, 'Lumpy', 'mascot-popup-image');
     image.style.cssText = 'width:64px;height:64px;object-fit:contain;margin:0';
     const bubble = document.createElement('div');
     bubble.textContent = message;
-    bubble.style.cssText = 'font-weight:700;font-size:14px;color:#3c3c3c;max-width:240px';
+    bubble.style.cssText = 'font-weight:700;font-size:16px;color:#3c3c3c;max-width:240px';
     popup.appendChild(image);
     popup.appendChild(bubble);
     layer.appendChild(popup);
@@ -35,24 +35,24 @@
   renderHome = function() {
     originalRenderHome();
     const hero = app.querySelector('.hero');
-    if (hero && !hero.querySelector('img[src*="mascot-welcome"]')) {
-      hero.appendChild(mascotImage('mascot-welcome.png', 'DUOLIBEE welcome mascot'));
+    if (hero && !hero.querySelector('img[src*="lumpy-welcome"]')) {
+      hero.appendChild(mascotImage('characters/lumpy-welcome.png', 'Lumpy'));
     }
   };
   const originalRenderPractice = renderPractice;
   renderPractice = function() {
     originalRenderPractice();
     const card = app.querySelector('section.card');
-    if (card && !card.querySelector('img[src*="mascot-"]')) {
-      const file = state.streak === 0 ? 'mascot-sad.png' : 'mascot-keep-going.png';
-      const alt = state.streak === 0 ? 'DUOLIBEE sad mascot' : 'DUOLIBEE keep-going mascot';
+    if (card && !card.querySelector('img[src*="lumpy-"]')) {
+      const file = state.streak === 0 ? 'characters/lumpy-sad.png' : 'characters/lumpy-keep-going.png';
+      const alt = 'Lumpy';
       card.appendChild(mascotImage(file, alt));
     }
   };
   const originalFeedback = feedback;
   feedback = function(ok, msg) {
     originalFeedback(ok, msg);
-    mascotPopup(ok ? 'mascot-correct.png' : 'mascot-sad.png', ok ? 'Tama!' : (msg || 'Try again!'));
+    mascotPopup(ok ? 'characters/lumpy-correct.png' : 'characters/lumpy-sad.png', ok ? 'Tama!' : (msg || 'Try again!'));
   };
   const originalNext = next;
   next = function() {
@@ -61,8 +61,8 @@
     originalNext();
     if (wasComplete && correctBefore > 0) {
       const completeCard = app.querySelector('section.card.center');
-      if (completeCard && !completeCard.querySelector('img[src*="mascot-celebration"]')) {
-        completeCard.appendChild(mascotImage('mascot-celebration.png', 'DUOLIBEE celebration mascot'));
+      if (completeCard && !completeCard.querySelector('img[src*="lumpy-celebrating"]')) {
+        completeCard.appendChild(mascotImage('characters/lumpy-celebrating.png', 'Lumpy'));
       }
     }
   };
@@ -72,7 +72,7 @@
       if (typeof original === 'function' && !original.__mascotHooked) {
         const wrapped = function() {
           const result = original.apply(this, arguments);
-          mascotPopup('mascot-sad.png', 'Added to the end of the queue.');
+          mascotPopup('characters/lumpy-sad.png', 'Added to the end of the queue.');
           return result;
         };
         wrapped.__mascotHooked = true;

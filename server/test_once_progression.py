@@ -39,19 +39,25 @@ class OneAnswerProgressionTests(unittest.TestCase):
     def test_unanswered_prompt_is_not_falsely_mastered(self):
         self.open()
         with self.store.db() as c:self.assertEqual(self.store.answered(c,'alice'),set())
-    def test_end_of_available_prompts_does_not_loop(self):
+    def test_end_of_available_prompts_repeats_with_deja_vu(self):
         self.catalog={k:v for k,v in self.catalog.items() if k in ('lesson-001','lesson-002')}
         s,_=self.send(self.open(),rid='first')
         s,_=self.send(s,rid='second')
-        self.assertEqual(s['status'],'practice_complete')
-        self.assertEqual(self.open()['status'],'practice_complete')
-        self.assertEqual(sum(m['text']=='Question 1?' for m in s['messages']),1)
+        self.assertEqual(s['status'],'active')
+        self.assertEqual(s['lesson'],1)
+        self.assertIn('deja vu',s['messages'][-1]['text'].lower())
+        self.assertEqual(self.open()['status'],'active')
+        s,_=self.send(s,rid='third')
+        self.assertEqual(s['lesson'],2)
+        self.assertIn('deja vu',s['messages'][-1]['text'].lower())
     def test_new_prompt_can_resume_finished_thread(self):
         all_missions=self.catalog
         self.catalog={'lesson-001':all_missions['lesson-001'],'lesson-002':all_missions['lesson-002']}
         s,_=self.send(self.open(),rid='first');s,_=self.send(s,rid='second')
+        self.assertEqual(s['lesson'],1)
         self.catalog['lesson-003']=all_missions['lesson-003']
-        self.assertEqual(self.open()['lesson'],3)
+        s,_=self.send(s,rid='third')
+        self.assertEqual(s['lesson'],3)
     def test_previous_cached_correct_answer_is_imported(self):
         self.open()
         with self.store.db() as c:
