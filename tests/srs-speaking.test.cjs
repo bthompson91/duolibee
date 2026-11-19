@@ -874,6 +874,78 @@ for (const f of order) {
   assert.strictEqual(envTests.desktop.ios, false, 'desktop Chrome is not iOS');
   assert.strictEqual(envTests.desktop.inApp, false, 'desktop Chrome is not an in-app browser');
 
+  // ---- Pre-recorded lesson audio ----
+  // play() prefers the generated MP3 for a phrase (words in the lesson
+  // host's voice, sentences in the speaker's voice) and falls back to the
+  // system voice when there is no file. Runs before the header block so
+  // the header block still runs last.
+  const fetchBeforeAudio = sandbox.fetch;
+  sandbox.fetch = async (url) => {
+    const u = String(url && url.url ? url.url : url);
+    if (u.includes('manifest.json')) return { ok: true, status: 200, json: async () => ({ version: 1, entries: {
+      'lumpy|Kumusta': 'aaa111.mp3',
+      'lola-joli|Kumusta ka?': 'bbb222.mp3',
+    } }) };
+    return fetchBeforeAudio(url);
+  };
+  sandbox.Audio = class {
+    constructor(src) { this.src = src; this.playbackRate = 1; this.paused = false; sandbox.__audioCreated.push(this); }
+    play() { sandbox.__audioPlayed.push(this.src); if (this.onplaying) this.onplaying(); return Promise.resolve(); }
+    pause() { this.paused = true; }
+  };
+  sandbox.__audioCreated = [];
+  sandbox.__audioPlayed = [];
+  await vm.runInContext('duolibeeLessonAudio.load()', sandbox);
+  const audio = vm.runInContext(`
+    (function () {
+      const out = {};
+      out.fileLumpy = duolibeeLessonAudio.fileFor('Kumusta', 'lumpy');
+      out.fileLola = duolibeeLessonAudio.fileFor('Kumusta ka?', 'lola-joli');
+      out.fileMissing = duolibeeLessonAudio.fileFor('Kumusta', 'lola-joli');
+      out.fileUnknown = duolibeeLessonAudio.fileFor('Hindi ito totoo', 'lumpy');
+      startLesson(1);
+      out.hostChar = duolibeeLessonAudio.characterFor('Kumusta');
+      const th = THEMES.find(t => t.name === session.category);
+      const sent = th.sentences[0];
+      out.sentenceTextChar = duolibeeLessonAudio.characterFor(sent.t);
+      out.sentenceTextSpeaker = sent.speaker;
+      const ex = session.exercises.find(e => e.speaker);
+      out.hasSentenceSpeaker = !!ex;
+      if (ex) { index = session.exercises.indexOf(ex); renderExercise(); out.speakerChar = duolibeeLessonAudio.characterFor('kahit ano'); out.exSpeaker = ex.speaker; }
+      index = 0; renderExercise();
+      speak('Kumusta');
+      out.playedSrc = __audioCreated.length ? __audioCreated[__audioCreated.length - 1].src : null;
+      out.playedCount = __audioPlayed.length;
+      out.statusAfterFile = document.getElementById('speech-status').textContent;
+      duolibeeLessonAudio.play('Kumusta ka?', false, false, 'lola-joli');
+      out.lolaSrc = __audioCreated.length ? __audioCreated[__audioCreated.length - 1].src : null;
+      speak('Kumusta', true);
+      out.slowRate = __audioCreated.length ? __audioCreated[__audioCreated.length - 1].playbackRate : null;
+      const createdBefore = __audioCreated.length;
+      speak('Hindi ito totoo');
+      out.fallbackCreatedAudio = __audioCreated.length - createdBefore;
+      out.fallbackStatus = document.getElementById('speech-status').textContent;
+      return out;
+    })()
+  `, sandbox);
+  assert.strictEqual(audio.fileLumpy, 'aaa111.mp3', 'manifest lookup by character + phrase');
+  assert.strictEqual(audio.fileLola, 'bbb222.mp3', 'manifest lookup for a second character');
+  assert.strictEqual(audio.fileMissing, null, 'same phrase, other character has no file');
+  assert.strictEqual(audio.fileUnknown, null, 'unknown phrase has no file');
+  assert.strictEqual(audio.hostChar, 'lumpy', 'word in lesson 1 uses the host (Lumpy), got ' + audio.hostChar);
+  assert.strictEqual(audio.sentenceTextChar, audio.sentenceTextSpeaker, 'a sentence in the theme resolves to its speaker');
+  assert.ok(audio.hasSentenceSpeaker, 'lesson 1 has a sentence exercise with a speaker');
+  assert.strictEqual(audio.speakerChar, audio.exSpeaker, 'sentence exercise uses its speaker, got ' + audio.speakerChar);
+  assert.strictEqual(audio.playedSrc, 'assets/audio/aaa111.mp3', 'speaking a listed phrase plays its file, got ' + audio.playedSrc);
+  assert.strictEqual(audio.playedCount, 1, 'the file played exactly once');
+  assert.strictEqual(audio.statusAfterFile, 'Playing recorded audio.', 'status reports recorded audio, got ' + audio.statusAfterFile);
+  assert.strictEqual(audio.lolaSrc, 'assets/audio/bbb222.mp3', 'explicit character plays that character file, got ' + audio.lolaSrc);
+  assert.strictEqual(audio.slowRate, 0.62, 'slow playback reduces the rate, got ' + audio.slowRate);
+  assert.strictEqual(audio.fallbackCreatedAudio, 0, 'an unlisted phrase creates no Audio element');
+  assert.strictEqual(audio.fallbackStatus, 'Device speech is unavailable.', 'unlisted phrase falls back to the system voice, got ' + audio.fallbackStatus);
+  console.log('LESSON AUDIO: file lookup, host/speaker voices, slow rate, fallback: OK');
+  sandbox.fetch = fetchBeforeAudio;
+
   // ---- Header fraction: one progress number per screen ----
   // The header counts graded questions only, out of the fixed graded
   // total: the learn screen shows no fraction (it is not a question),

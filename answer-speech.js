@@ -22,11 +22,80 @@
   function hook(name) {
     try { const f = window[name]; if (typeof f === 'function') f(); } catch (e) { /* best-effort: never break speech */ }
   }
-  function play(text, english = false, slow = false) {
+  // ---- Pre-recorded lesson audio ----
+  // Every lesson phrase was synthesized once (tools/generate-audio.py) and
+  // ships in assets/audio/. play() tries the file first and falls back to
+  // the system voice when there is no file (or it fails to play). Words use
+  // the lesson host's voice; sentences use their speaker's voice.
+  let audioManifest = null;
+  let audioManifestPromise = null;
+  function loadAudioManifest() {
+    if (audioManifest) return Promise.resolve(audioManifest);
+    if (audioManifestPromise) return audioManifestPromise;
+    audioManifestPromise = (typeof fetch === 'function'
+      ? fetch('assets/audio/manifest.json', { cache: 'no-store' }).then(r => (r && r.ok ? r.json() : null)).catch(() => null)
+      : Promise.resolve(null)).then(m => { audioManifest = m && m.entries ? m : null; if (!audioManifest) audioManifestPromise = null; return audioManifest; });
+    return audioManifestPromise;
+  }
+  loadAudioManifest();
+  // Exposed for tests (mirrors characters.js exposing duolibeeCharacters).
+  window.duolibeeLessonAudio = { load: loadAudioManifest, fileFor: audioFileFor, characterFor: audioCharacterFor, play };
+  function audioCharacterFor(text) {
+    const value = norm(text);
+    try {
+      const ex = session && session.exercises && session.exercises[index];
+      if (ex && ex.speaker) return ex.speaker;
+      const th = session && session.category ? (THEMES || []).find(t => t.name === session.category) : null;
+      if (th) {
+        const s = (th.sentences || []).find(s => norm(s.t) === value);
+        if (s && s.speaker) return s.speaker;
+      }
+      if (session && session.host) return session.host;
+      const it = (ALL || []).find(x => norm(x.t) === value);
+      if (it) {
+        const t2 = (THEMES || []).find(t => t.name === it.theme);
+        if (t2 && t2.host) return t2.host;
+      }
+    } catch (e) { /* fall through to Lumpy */ }
+    return 'lumpy';
+  }
+  function audioFileFor(text, character) {
+    if (!audioManifest) return null;
+    return audioManifest.entries[character + '|' + text] || audioManifest.entries[character + '|' + norm(text)] || null;
+  }
+  let activeAudio = null;
+  function stopAudioFile() {
+    try { if (activeAudio) { activeAudio.pause(); activeAudio = null; } } catch (e) { activeAudio = null; }
+  }
+  function playAudioFile(file, slow) {
+    try {
+      stopAudioFile();
+      if (window.speechSynthesis) speechSynthesis.cancel();
+      const a = new Audio('assets/audio/' + file);
+      activeAudio = a;
+      if (slow) a.playbackRate = 0.62;
+      a.onplaying = () => { if (activeAudio === a) { hook('duolibeeSpeechStart'); status('Playing recorded audio.'); } };
+      a.onended = () => { if (activeAudio === a) { activeAudio = null; hook('duolibeeSpeechEnd'); status('Playback complete.'); } };
+      a.onerror = () => { if (activeAudio === a) { activeAudio = null; hook('duolibeeSpeechEnd'); status('Recorded audio failed to play.'); } };
+      hook('duolibeeSpeechStart');
+      const p = a.play();
+      if (p && typeof p.catch === 'function') p.catch(() => { if (activeAudio === a) { activeAudio = null; hook('duolibeeSpeechEnd'); } });
+      return true;
+    } catch (e) {
+      activeAudio = null;
+      return false;
+    }
+  }
+  function play(text, english = false, slow = false, character) {
     if (!text || state.settings.muted) return;
+    if (!english) {
+      if (!audioManifest) loadAudioManifest();
+      const file = audioFileFor(text, character || audioCharacterFor(text));
+      if (file && playAudioFile(file, slow)) return;
+    }
     if (!window.speechSynthesis) return status('Device speech is unavailable.');
     const selected = route(english);
-    active = null; speechSynthesis.cancel();
+    active = null; stopAudioFile(); speechSynthesis.cancel();
     if (!english && !selected.voice) return status('Tagalog audio unavailable: no Tagalog/Filipino or Malay voice is available.');
     const u = new SpeechSynthesisUtterance(selected.malay ? tagalogSpeechText(text, false) : String(text));
     active = u;
