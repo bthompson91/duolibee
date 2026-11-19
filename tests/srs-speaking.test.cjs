@@ -169,6 +169,7 @@ for (const f of order) {
   assert.strictEqual(info.gradedById[100], 12, 'lesson 100 has 12 graded');
   assert.ok(info.itemsPerLesson.every((n) => n === 6), '6 words per lesson');
 
+
   // ---- Play lesson 1: the translate exercise wrong on first try, everything else right ----
   // (the sentence build is answered right, so the only first-try failure is a
   // single-item exercise — that item must reset while the others advance) ----
@@ -872,6 +873,57 @@ for (const f of order) {
   assert.strictEqual(envTests.chromeIOS.inApp, true, 'Chrome on iOS is a webview, not Safari');
   assert.strictEqual(envTests.desktop.ios, false, 'desktop Chrome is not iOS');
   assert.strictEqual(envTests.desktop.inApp, false, 'desktop Chrome is not an in-app browser');
+
+  // ---- Header fraction: one progress number per screen ----
+  // The header counts graded questions only, out of the fixed graded
+  // total: the learn screen shows no fraction (it is not a question),
+  // and a retry shows the same question number as the original, so the
+  // total never grows. Runs last, revisiting lesson 1 after it completed,
+  // so it cannot disturb the SRS/review assertions above; the retry is
+  // rendered directly (index jump) rather than walked to, since walking
+  // would need the match buttons, whose disabled state the vm's
+  // getElementById stub carries over from the earlier play-through.
+  const header = vm.runInContext(`
+    (function () {
+      const grab = () => {
+        const m = app.innerHTML.match(/<\\/strong> • (\\d+)\\/(\\d+)/);
+        return m ? m[1] + '/' + m[2] : null;
+      };
+      const answerWrong = (e) => {
+        if (e.type === 'choice') answerChoice((e.answer + 1) % e.options.length);
+        else if (e.type === 'translate') { document.getElementById('answer').value = 'maling sagot'; answerTranslate(); }
+        else if (e.type === 'reverse') { document.getElementById('answer').value = 'maling sagot'; answerReverse(); }
+        else if (e.type === 'audio') answerAudio((e.options.indexOf(e.item.e) + 1) % e.options.length);
+        else if (e.type === 'match') { pickMatch('L', 0); pickMatch('R', (session.mR.indexOf(e.pairs[0].e) + 1) % e.pairs.length); }
+        else if (e.type === 'build') { const words = e.answer.split(' '); const used = new Set(); session.built = words.map((w) => { const j = session.bank.findIndex((b, k) => b === w && !used.has(k)); used.add(j); return j; }).reverse(); checkBuild(); }
+        else if (e.type === 'speak') { session.speakHeard = 'maling sagot'; checkSpeaking(); }
+      };
+      const out = {};
+      startLesson(1);
+      out.learn = grab();
+      next();
+      out.first = grab();
+      const wrongOrigin = session.exercises[index]._origin;
+      answerWrong(session.exercises[index]);
+      // The retry is queued at the end of the lesson; render it directly.
+      // (Walking there exercise-by-exercise would need the match buttons,
+      // whose disabled state the vm's getElementById stub carries over
+      // from the earlier play-through; in a real browser renderExercise
+      // rebuilds them fresh.)
+      index = session.exercises.length - 1;
+      renderExercise();
+      out.retry = grab();
+      out.retryIsRetry = !!session.exercises[index]._retry;
+      out.retryOriginMatches = session.exercises[index]._origin === wrongOrigin;
+      return out;
+    })()
+  `, sandbox);
+  assert.strictEqual(header.learn, null, 'learn screen header has no fraction, got ' + header.learn);
+  assert.strictEqual(header.first, '1/7', 'first graded exercise header is 1/7, got ' + header.first);
+  assert.strictEqual(header.retryIsRetry, true, 'rendered the retry exercise');
+  assert.strictEqual(header.retryOriginMatches, true, 'the retry is the same question as the one answered wrong');
+  assert.strictEqual(header.retry, '1/7', 'retry shows the same question number and total, got ' + header.retry);
+  console.log('HEADER: learn screen has no fraction; first graded 1/7; retry still 1/7: OK');
 
   console.log('FULL-CHAIN: PASS');
   process.exit(0); // scripts register intervals; exit explicitly on success
