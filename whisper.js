@@ -8,6 +8,11 @@
 // device; only the model files are downloaded, from Hugging Face and
 // jsDelivr. If the model cannot load, the speaking exercise falls back to
 // a written question as usual.
+//
+// A second Settings checkbox, "Always use Whisper", makes Whisper the
+// only transcription path (browser recognition and the server are
+// skipped). It is only usable while Whisper itself is on, and turning
+// Whisper off clears it.
 (() => {
   const WORKER_URL = 'whisper-worker.js?v=0.38.4';
   let worker = null;
@@ -119,14 +124,26 @@
     return 'Not downloaded yet — turning it on downloads the model (~40 MB, once).';
   }
 
+  // The force checkbox is only usable while Whisper itself is on; it is
+  // disabled (and unchecked) otherwise, so the force flag can never
+  // outlive the model it needs.
+  function syncForceBox() {
+    const forceBox = document.getElementById('force-whisper-setting-box');
+    if (!forceBox) return;
+    forceBox.disabled = state.settings.whisper !== true;
+    if (state.settings.whisper !== true) forceBox.checked = false;
+  }
+
   // Turning it on starts the download; turning it off only stops using
   // it, so the model stays cached for next time. On failure the setting
   // reverts and the learner can retry.
   async function setWhisperEnabled(on) {
     state.settings.whisper = !!on;
+    if (!on) state.settings.forceWhisper = false;
     save();
     const status = document.getElementById('whisper-status');
     const box = document.getElementById('whisper-setting-box');
+    syncForceBox();
     if (!on) {
       if (status) status.textContent = 'Off — the model stays downloaded on this device.';
       return;
@@ -137,8 +154,10 @@
       if (status) status.textContent = 'Ready — stored on this device (~40 MB).';
     } catch (e) {
       state.settings.whisper = false;
+      state.settings.forceWhisper = false;
       save();
       if (box) box.checked = false;
+      syncForceBox();
       if (status) status.textContent = 'Download failed — check your connection and try again.';
     }
   }
@@ -164,7 +183,21 @@
     status.className = 'setting-note';
     status.textContent = whisperStatusText();
     label.append(status);
+    const forceLabel = document.createElement('label');
+    forceLabel.className = 'setting-row';
+    forceLabel.id = 'force-whisper-setting';
+    const forceBox = document.createElement('input');
+    forceBox.type = 'checkbox';
+    forceBox.id = 'force-whisper-setting-box';
+    forceBox.checked = state.settings.forceWhisper === true;
+    forceBox.disabled = state.settings.whisper !== true;
+    forceBox.onchange = () => { state.settings.forceWhisper = forceBox.checked; save(); };
+    forceLabel.append(forceBox, document.createTextNode(' Always use Whisper for speaking'));
+    const forceNote = document.createElement('span');
+    forceNote.className = 'setting-note';
+    forceNote.textContent = 'Skips browser recognition and the server — every speaking question is transcribed on this device.';
+    forceLabel.append(forceNote);
     const card = app.querySelector('.card');
-    if (card) card.append(label);
+    if (card) { card.append(label); card.append(forceLabel); }
   };
 })();

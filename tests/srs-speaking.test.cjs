@@ -22,7 +22,7 @@ class El {
     this.value = '';
     this.checked = false;
     this.disabled = false;
-    this.id = '';
+    this._id = '';
     this.className = '';
     this.dataset = {};
     this.style = {};
@@ -33,8 +33,14 @@ class El {
   }
   set innerHTML(v) { this._html = String(v); }
   get innerHTML() { return this._html; }
+  // Like a real DOM: setting an id makes the element findable.
+  set id(v) { this._id = String(v || ''); if (this._id) byId.set(this._id, this); }
+  get id() { return this._id; }
   append(...xs) { this.children.push(...xs); return xs[0]; }
   appendChild(x) { this.children.push(x); return x; }
+  insertBefore(x) { this.children.push(x); return x; }
+  after(...xs) { this.children.push(...xs); return xs[0]; }
+  before(...xs) { this.children.unshift(...xs); return xs[0]; }
   prepend(...xs) { this.children.unshift(...xs); return xs[0]; }
   replaceChildren(...xs) { this.children = xs; }
   querySelector() { return new El('div'); }
@@ -62,6 +68,7 @@ const sandbox = {
   document: {
     getElementById: (id) => (id === 'app' ? appEl : getEl(id)),
     createElement: (tag) => new El(tag),
+    createTextNode: (text) => ({ nodeType: 3, textContent: String(text) }),
     querySelector: (sel) => (sel === '.stats' || sel === '.topbar .stats' ? new El('div') : new El('div')),
     querySelectorAll: () => [],
     addEventListener: () => {},
@@ -779,7 +786,112 @@ for (const f of order) {
     delete state.settings.whisper;
   `, sandbox);
 
-  // K. Speaking switched off in Settings still swaps speak exercises at
+  // K. Force Whisper: the server is never asked — the same recording goes
+  // straight to the on-device model, even when the server would answer.
+  vm.runInContext(`
+    window.__whisperTranscript = null;
+    window.__whisperCalls = 0;
+    window.__serverCalls = 0;
+    window.__realWhisper3 = window.duolibeeWhisper;
+    window.duolibeeWhisper = {
+      ensureLoaded: async () => {},
+      transcribe: async (audio) => { window.__whisperCalls++; return window.__whisperTranscript || ''; },
+      status: 'ready',
+    };
+    state.settings.whisper = true;
+    state.settings.forceWhisper = true;
+  `, sandbox);
+  const fetchBeforeForce = sandbox.fetch;
+  sandbox.fetch = async (url, options) => {
+    const u = String(url && url.url ? url.url : url);
+    if (u.includes('/transcribe')) { sandbox.__serverCalls++; return { ok: true, status: 200, json: async () => ({ transcript: 'SERVER-WORD' }) }; }
+    return fetchBeforeForce(url, options);
+  };
+  const forceTest = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 13); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
+      window.__whisperTranscript = session.exercises[idx].item.t;
+      index = idx; renderExercise();
+      const forced = window.duolibeeSpeaking.whisperForced();
+      startSpeaking();
+      return { idx, item: session.exercises[idx].item.t, forced };
+    })()
+  `, sandbox);
+  await sleep(120);
+  const forceAfter = vm.runInContext(`
+    (function () {
+      return { type: session.exercises[index].type, heard: session.speakHeard, serverCalls: window.__serverCalls, whisperCalls: window.__whisperCalls };
+    })()
+  `, sandbox);
+  sandbox.fetch = fetchBeforeForce;
+  console.log('force whisper:', JSON.stringify(forceAfter));
+  assert.strictEqual(forceTest.forced, true, 'forceWhisper with Whisper on must report forced');
+  assert.strictEqual(forceAfter.type, 'speak', 'forced Whisper must keep the exercise');
+  assert.strictEqual(forceAfter.heard, forceTest.item, 'forced Whisper must hear the word');
+  assert.strictEqual(forceAfter.serverCalls, 0, 'forced Whisper must never call the server');
+  assert.strictEqual(forceAfter.whisperCalls, 1, 'forced Whisper must call the model exactly once');
+
+  // Forcing is only active when both settings are on and the model
+  // object exists; turning Whisper off clears the force flag and
+  // disables its checkbox.
+  const forcedStates = vm.runInContext(`
+    (function () {
+      const out = {};
+      state.settings.forceWhisper = true; state.settings.whisper = true;
+      out.bothOn = window.duolibeeSpeaking.whisperForced();
+      state.settings.whisper = false;
+      out.whisperOff = window.duolibeeSpeaking.whisperForced();
+      state.settings.whisper = true; state.settings.forceWhisper = false;
+      out.forceOff = window.duolibeeSpeaking.whisperForced();
+      return out;
+    })()
+  `, sandbox);
+  assert.strictEqual(forcedStates.bothOn, true, 'both settings on must force');
+  assert.strictEqual(forcedStates.whisperOff, false, 'Whisper off must not force');
+  assert.strictEqual(forcedStates.forceOff, false, 'force off must not force');
+  vm.runInContext(`
+    state.settings.whisper = true;
+    state.settings.forceWhisper = true;
+    // The recognition tests stubbed app.querySelector to capture swap
+    // notes; restore the real one for this render, then put the stub
+    // back so the later swap tests still capture their notes. The
+    // harness getElementById always returns an element, so the whisper
+    // wrapper's "already built" guard would always fire — return null
+    // for the whisper ids just for this render.
+    delete app.querySelector;
+    const realGetById = document.getElementById;
+    document.getElementById = (id) => (id === 'whisper-setting' || id === 'force-whisper-setting' ? null : realGetById(id));
+    renderSettings();
+    document.getElementById = realGetById;
+    app.querySelector = () => ({ prepend: (p) => { window.__notes = window.__notes || []; window.__notes.push(p.textContent); }, append: () => {} });
+  `, sandbox);
+  const forceBoxOn = vm.runInContext(`
+    (function () {
+      const box = document.getElementById('force-whisper-setting-box');
+      return box ? { checked: box.checked, disabled: box.disabled } : null;
+    })()
+  `, sandbox);
+  assert.ok(forceBoxOn, 'the force-Whisper checkbox must exist in Settings');
+  assert.strictEqual(forceBoxOn.checked, true, 'the force checkbox must reflect the setting');
+  assert.strictEqual(forceBoxOn.disabled, false, 'the force checkbox must be usable while Whisper is on');
+  await vm.runInContext('setWhisperEnabled(false)', sandbox);
+  const forceBoxOff = vm.runInContext(`
+    (function () {
+      const box = document.getElementById('force-whisper-setting-box');
+      return { setting: state.settings.forceWhisper, checked: box ? box.checked : null, disabled: box ? box.disabled : null };
+    })()
+  `, sandbox);
+  assert.strictEqual(forceBoxOff.setting, false, 'turning Whisper off must clear the force setting');
+  assert.strictEqual(forceBoxOff.checked, false, 'turning Whisper off must uncheck the force box');
+  assert.strictEqual(forceBoxOff.disabled, true, 'turning Whisper off must disable the force box');
+  vm.runInContext(`
+    window.duolibeeWhisper = window.__realWhisper3;
+    delete state.settings.whisper;
+    delete state.settings.forceWhisper;
+  `, sandbox);
+
+  // L. Speaking switched off in Settings still swaps speak exercises at
   // render time.
   const settingsOff = vm.runInContext(`
     (function () {
@@ -795,7 +907,7 @@ for (const f of order) {
   console.log('speaking off in settings:', JSON.stringify(settingsOff));
   assert.strictEqual(settingsOff.type, 'choice', 'speaking off must swap the exercise at render');
 
-  // L. A sentence speak that cannot be transcribed becomes a translate
+  // M. A sentence speak that cannot be transcribed becomes a translate
   // question (type the sentence), not a choice: a choice would give the
   // long English sentence away among single-word distractors.
   vm.runInContext(`

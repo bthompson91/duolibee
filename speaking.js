@@ -22,6 +22,8 @@
 //   3. On-device Whisper, only when the learner switched it on in
 //      Settings (enabling it downloads the ~40 MB model, once). The same
 //      recording is decoded to 16 kHz mono and transcribed on the device.
+//      Settings also offers "Always use Whisper": when it is on, steps
+//      1-2 are skipped and every recording goes straight to the model.
 //   4. A written question, with no penalty.
 //
 // Audio never leaves the device except to the browser's speech-recognition
@@ -273,6 +275,14 @@
       try { recorder.stop(); } catch (e) { recorder = null; }
     }
   }
+  // Forced Whisper: the learner asked for the on-device model every
+  // time, so browser recognition and the server are both skipped. The
+  // Whisper toggle itself stays the master switch — forcing it without
+  // the model downloaded would start a download mid-lesson, so the
+  // force flag alone is never enough.
+  function whisperForced() {
+    return !!(state.settings.forceWhisper && state.settings.whisper && window.duolibeeWhisper);
+  }
   async function finishRecording() {
     const ex = session && session.exercises && session.exercises[index];
     if (!ex || ex.type !== 'speak' || session._answeredIndex === index) return;
@@ -287,17 +297,25 @@
       setStatus('Nothing was recorded — tap the microphone and try again.');
       return;
     }
-    setStatus('Checking what you said…');
-    let text = await transcribeOnServer(blob);
-    if (!text && state.settings.whisper && window.duolibeeWhisper) {
+    const forced = whisperForced();
+    setStatus(forced ? 'Transcribing on this device…' : 'Checking what you said…');
+    let text = '';
+    if (forced) {
       text = await transcribeWithWhisper(blob);
+    } else {
+      text = await transcribeOnServer(blob);
+      if (!text && state.settings.whisper && window.duolibeeWhisper) {
+        text = await transcribeWithWhisper(blob);
+      }
     }
     if (text) {
       session.speakHeard = text;
       setHeard(text);
       setStatus('Tap “Check my pronunciation” when you are ready.');
     } else {
-      swapToWritten('Couldn’t check what you said — the transcription service didn’t answer. This became a written question instead. No penalty.');
+      swapToWritten(forced
+        ? 'Couldn’t check what you said — Whisper couldn’t transcribe it on this device. This became a written question instead. No penalty.'
+        : 'Couldn’t check what you said — the transcription service didn’t answer. This became a written question instead. No penalty.');
     }
   }
   // Server transcription. Returns the transcript, or '' on any failure —
@@ -355,6 +373,13 @@
     if (!ex || ex.type !== 'speak') return;
     if (session._answeredIndex === index) return;
     if (recorder) { stopRecording(); return; }
+    // Forced Whisper goes straight to recording: browser recognition and
+    // the server are both skipped, so there is nothing to listen with.
+    if (whisperForced()) {
+      setStatus('Recording — Whisper will transcribe on this device.');
+      startRecording();
+      return;
+    }
     // Contexts where the browser's recognition service is never offered
     // go straight to recording: the microphone and the transcription
     // fallbacks work fine there.
@@ -414,7 +439,7 @@
   // Exposed for tests: the matcher, the environment detection, and the
   // recording path (so tests can drive it without a real microphone).
   window.duolibeeSpeakingEnv = { isIOS, isInAppBrowser, isStandaloneWebApp };
-  window.duolibeeSpeaking = { startRecording, stopRecording, transcribeOnServer, transcribeWithWhisper, resampleTo16k };
+  window.duolibeeSpeaking = { startRecording, stopRecording, transcribeOnServer, transcribeWithWhisper, resampleTo16k, whisperForced };
   window.speakAccepted = speakAccepted;
   window.speakSimilarity = speakSimilarity;
   window.speakSupported = speakSupported;
