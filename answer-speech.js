@@ -53,8 +53,8 @@
       const host = session.host || 'lumpy';
       const files = new Set();
       (session.items || []).forEach(it => {
-        const f1 = audioFileFor(it.t, host, false); if (f1) files.add(f1);
-        const f2 = audioFileFor(it.e, host, true); if (f2) files.add(f2);
+        const f1 = audioFileWithFallback(it.t, host, false); if (f1) files.add(f1);
+        const f2 = audioFileWithFallback(it.e, host, true); if (f2) files.add(f2);
       });
       const th = session.category ? (THEMES || []).find(t => t.name === session.category) : null;
       (session.exercises || []).forEach(ex => {
@@ -63,15 +63,22 @@
         // The build exercise carries the sentence in ex.answer; the speak
         // exercises (word and sentence) carry their phrase in ex.item.
         if (ex.answer && typeof ex.answer === 'string') {
-          const f = audioFileFor(ex.answer, ch, false); if (f) files.add(f);
+          const f = audioFileWithFallback(ex.answer, ch, false); if (f) files.add(f);
           if (th) {
             const s = (th.sentences || []).find(s => norm(s.t) === norm(ex.answer));
-            if (s && s.e) { const fe = audioFileFor(s.e, ch, true); if (fe) files.add(fe); }
+            if (s && s.e) { const fe = audioFileWithFallback(s.e, ch, true); if (fe) files.add(fe); }
           }
+          // The build exercise shows the sentence as tappable word tokens;
+          // pre-cache each word in the speaker's voice so the first tap
+          // plays instantly. Tokens carry trailing punctuation ("ka?");
+          // the lookup tries the raw token, then the normalized word.
+          ex.answer.split(' ').forEach(w => {
+            const fw = audioFileWithFallback(w, ch, false); if (fw) files.add(fw);
+          });
         }
         if (ex.item && typeof ex.item.t === 'string') {
-          const f = audioFileFor(ex.item.t, ch, false); if (f) files.add(f);
-          if (typeof ex.item.e === 'string') { const fe = audioFileFor(ex.item.e, ch, true); if (fe) files.add(fe); }
+          const f = audioFileWithFallback(ex.item.t, ch, false); if (f) files.add(f);
+          if (typeof ex.item.e === 'string') { const fe = audioFileWithFallback(ex.item.e, ch, true); if (fe) files.add(fe); }
         }
       });
       if (typeof fetch !== 'function') return;
@@ -122,6 +129,29 @@
     return e[character + '|' + lang + '|' + text] || e[character + '|' + lang + '|' + norm(text)]
       || e[character + '|' + text] || e[character + '|' + norm(text)] || null;
   }
+  // The speaker's clip for a word may be missing (a sentence edited after
+  // the audio was generated, say); fall back to the lesson host's clip for
+  // the same word, then to the word's own theme host, before giving up and
+  // letting play() use the system voice — on a phone with no Tagalog voice
+  // that fallback is silence.
+  function audioFileWithFallback(text, character, english) {
+    const tried = new Set();
+    const tryChar = (ch) => {
+      if (!ch || tried.has(ch)) return null;
+      tried.add(ch);
+      return audioFileFor(text, ch, english);
+    };
+    let file = tryChar(character);
+    if (file) return file;
+    if (session && session.host) { file = tryChar(session.host); if (file) return file; }
+    const value = norm(text);
+    const it = (ALL || []).find(x => norm(x.t) === value) || (ALL || []).find(x => norm(x.e) === value);
+    if (it) {
+      const t2 = (THEMES || []).find(t => t.name === it.theme);
+      if (t2 && t2.host) { file = tryChar(t2.host); if (file) return file; }
+    }
+    return null;
+  }
   let activeAudio = null;
   function stopAudioFile() {
     try { if (activeAudio) { activeAudio.pause(); activeAudio = null; } } catch (e) { activeAudio = null; }
@@ -149,7 +179,7 @@
     if (!text || state.settings.muted) return;
     // Recorded clips first, in both languages; system voice is the fallback.
     if (!audioManifest) loadAudioManifest();
-    const file = audioFileFor(text, character || audioCharacterFor(text), english);
+    const file = audioFileWithFallback(text, character || audioCharacterFor(text), english);
     if (file && playAudioFile(file, slow)) return;
     if (!window.speechSynthesis) return status('Device speech is unavailable.');
     const selected = route(english);

@@ -7,7 +7,12 @@ saved under assets/audio/ with a content-addressed filename. The app plays
 these files instead of calling a TTS service at runtime.
 
 Words are spoken in the lesson host's voice; sentences in their speaker's
-voice (the `speaker` field on each sentence).
+voice (the `speaker` field on each sentence). The build exercise shows each
+sentence as tappable word tokens, so every individual sentence word is also
+generated in its sentence's speaker's voice (Tagalog only — no UI speaks
+English sentence words individually). Tokens carry trailing punctuation
+("ka?", "tulong."), so the word is stored stripped of it; the app's lookup
+tries the raw token first, then the normalized word, which matches.
 
 Both languages are generated:
   * Tagalog (tl): the fil-PH voices, one per character.
@@ -101,6 +106,14 @@ def collect(lessons_path):
             for text, lang in ((s["t"], "tl"), (s["e"], "en")):
                 if text:
                     pairs[(text, speaker, lang)] = None
+            # Individual words of the sentence, in the speaker's voice:
+            # the build exercise shows each word as a tappable token.
+            # Tokens carry trailing punctuation ("ka?", "tulong."), so
+            # strip it — the app looks the normalized word up.
+            for tok in (s["t"] or "").split(" "):
+                word = tok.strip("?.,!;:'\"()")
+                if word:
+                    pairs[(word, speaker, "tl")] = None
     for (text, char, lang) in pairs:
         rate, pitch = CHAR_SETTINGS[char]
         voice = (TL_VOICES if lang == "tl" else EN_VOICES)[char]

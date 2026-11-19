@@ -994,20 +994,30 @@ for (const f of order) {
   // Starting a lesson pre-caches that lesson's Tagalog + English clips.
   // Runs before the header block so the header block still runs last.
   const fetchBeforeAudio = sandbox.fetch;
-  const l1 = JSON.parse(vm.runInContext(`JSON.stringify({ host: LESSONS[0].host || THEMES[0].host, word: LESSONS[0].items[1].t, wordEn: LESSONS[0].items[1].e, sent: THEMES.find(t => t.name === LESSONS[0].category).sentences[1].t, sentEn: THEMES.find(t => t.name === LESSONS[0].category).sentences[1].e, sentSpeaker: THEMES.find(t => t.name === LESSONS[0].category).sentences[1].speaker })`, sandbox));
+  const l1 = JSON.parse(vm.runInContext(`JSON.stringify({ host: LESSONS[0].host || THEMES[0].host, word: LESSONS[0].items[1].t, wordEn: LESSONS[0].items[1].e, sent: THEMES.find(t => t.name === LESSONS[0].category).sentences[1].t, sentEn: THEMES.find(t => t.name === LESSONS[0].category).sentences[1].e, sentSpeaker: THEMES.find(t => t.name === LESSONS[0].category).sentences[1].speaker, buildSent: THEMES.find(t => t.name === LESSONS[0].category).sentences[0].t, buildSpeaker: THEMES.find(t => t.name === LESSONS[0].category).sentences[0].speaker, buildWords: THEMES.find(t => t.name === LESSONS[0].category).sentences[0].t.split(' ') })`, sandbox));
+  sandbox.__buildWords = l1.buildWords;
+  sandbox.__buildSpeaker = l1.buildSpeaker;
   sandbox.__fetchedAudio = [];
+  // The build sentence's individual words, in the speaker's voice: the
+  // stripped form of each token (tokens carry trailing punctuation).
+  // 'Kumusta' is already there as vocab (aaa111); 'ka' is the new file.
+  const audioEntries = {
+    'lumpy|tl|Kumusta': 'aaa111.mp3',
+    'lola-joli|tl|Kumusta ka?': 'bbb222.mp3',
+    'lumpy|en|Thank you': 'ccc333.mp3',
+    'lumpy|Kumusta ka?': 'ddd444.mp3',
+    [l1.host + '|tl|' + l1.word]: 'lesson1word.mp3',
+    [l1.host + '|en|' + l1.wordEn]: 'lesson1word-en.mp3',
+    [l1.sentSpeaker + '|tl|' + l1.sent]: 'lesson1sent.mp3',
+    [l1.sentSpeaker + '|en|' + l1.sentEn]: 'lesson1sent-en.mp3',
+  };
+  l1.buildWords.map(w => w.replace(/[?.,!;:'"()]+$/g, '')).forEach((w, i) => {
+    const k = l1.buildSpeaker + '|tl|' + w;
+    if (!audioEntries[k]) audioEntries[k] = 'lesson1buildword' + (i + 1) + '.mp3';
+  });
   sandbox.fetch = async (url) => {
     const u = String(url && url.url ? url.url : url);
-    if (u.includes('manifest.json')) return { ok: true, status: 200, json: async () => ({ version: 2, entries: {
-      'lumpy|tl|Kumusta': 'aaa111.mp3',
-      'lola-joli|tl|Kumusta ka?': 'bbb222.mp3',
-      'lumpy|en|Thank you': 'ccc333.mp3',
-      'lumpy|Kumusta ka?': 'ddd444.mp3',
-      [l1.host + '|tl|' + l1.word]: 'lesson1word.mp3',
-      [l1.host + '|en|' + l1.wordEn]: 'lesson1word-en.mp3',
-      [l1.sentSpeaker + '|tl|' + l1.sent]: 'lesson1sent.mp3',
-      [l1.sentSpeaker + '|en|' + l1.sentEn]: 'lesson1sent-en.mp3',
-    } }) };
+    if (u.includes('manifest.json')) return { ok: true, status: 200, json: async () => ({ version: 2, entries: audioEntries }) };
     if (u.startsWith('assets/audio/')) sandbox.__fetchedAudio.push(u.replace('assets/audio/', ''));
     return fetchBeforeAudio(url);
   };
@@ -1057,6 +1067,24 @@ for (const f of order) {
       speak('Hindi ito totoo');
       out.fallbackCreatedAudio = __audioCreated.length - createdBefore;
       out.fallbackStatus = document.getElementById('speech-status').textContent;
+      // The build sentence's words: a punctuated token finds its stripped
+      // file, and tapping it plays that file in the sentence speaker's voice.
+      const buildIdx = session.exercises.findIndex(e => e.type === 'build');
+      out.buildIdx = buildIdx;
+      if (buildIdx >= 0) {
+        index = buildIdx; renderExercise();
+        out.buildSpeaker = session.exercises[buildIdx].speaker;
+        out.buildChar = duolibeeLessonAudio.characterFor(__buildWords[1]);
+        duolibeeLessonAudio.play(__buildWords[1], false);
+        out.tokenSrc = __audioCreated.length ? __audioCreated[__audioCreated.length - 1].src : null;
+      }
+      // A word with no clip in the asked-for character falls back to the
+      // lesson host's clip instead of the (silent, on a phone) system voice.
+      const createdBeforeFallback = __audioCreated.length;
+      duolibeeLessonAudio.play('Kumusta', false, false, 'tita-baby');
+      out.fallbackHostCreated = __audioCreated.length - createdBeforeFallback;
+      out.fallbackHostSrc = __audioCreated.length ? __audioCreated[__audioCreated.length - 1].src : null;
+      out.fileBuildWord = duolibeeLessonAudio.fileFor(__buildWords[1], __buildSpeaker);
       return out;
     })()
   `, sandbox);
@@ -1069,7 +1097,13 @@ for (const f of order) {
   assert.strictEqual(audio.fileV1, 'ddd444.mp3', 'a v1 manifest key still plays Tagalog');
   assert.strictEqual(audio.sentenceEnChar, audio.sentenceTextSpeaker, 'a sentence translation resolves to its speaker');
   assert.strictEqual(audio.wordEnChar, 'lumpy', 'an English meaning resolves to the lesson host');
-  assert.deepStrictEqual(audio.preloaded, ['ccc333.mp3', 'ddd444.mp3', 'lesson1sent-en.mp3', 'lesson1sent.mp3', 'lesson1word-en.mp3', 'lesson1word.mp3'], 'lesson start pre-caches its Tagalog + English clips, got ' + JSON.stringify(audio.preloaded));
+  assert.deepStrictEqual(audio.preloaded, ['aaa111.mp3', 'ccc333.mp3', 'ddd444.mp3', 'lesson1buildword2.mp3', 'lesson1sent-en.mp3', 'lesson1sent.mp3', 'lesson1word-en.mp3', 'lesson1word.mp3'], 'lesson start pre-caches its Tagalog + English clips and the build sentence words, got ' + JSON.stringify(audio.preloaded));
+  assert.strictEqual(audio.fileBuildWord, 'lesson1buildword2.mp3', 'a punctuated build token finds its stripped word file, got ' + audio.fileBuildWord);
+  assert.ok(audio.buildIdx >= 0, 'lesson 1 has a build exercise');
+  assert.strictEqual(audio.buildChar, audio.buildSpeaker, 'a build word resolves to the sentence speaker, got ' + audio.buildChar);
+  assert.strictEqual(audio.tokenSrc, 'assets/audio/lesson1buildword2.mp3', 'tapping a build word plays its file, got ' + audio.tokenSrc);
+  assert.strictEqual(audio.fallbackHostCreated, 1, 'a missing speaker clip falls back to the host clip instead of the system voice');
+  assert.strictEqual(audio.fallbackHostSrc, 'assets/audio/aaa111.mp3', 'the host fallback plays the host file, got ' + audio.fallbackHostSrc);
   assert.strictEqual(audio.hostChar, 'lumpy', 'word in lesson 1 uses the host (Lumpy), got ' + audio.hostChar);
   assert.strictEqual(audio.sentenceTextChar, audio.sentenceTextSpeaker, 'a sentence in the theme resolves to its speaker');
   assert.ok(audio.hasSentenceSpeaker, 'lesson 1 has a sentence exercise with a speaker');
