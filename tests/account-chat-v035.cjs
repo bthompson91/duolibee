@@ -33,5 +33,49 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   const math=require(path.resolve(dir,'chat-notifications.js'));
   assert.equal(math.available(0),1);assert.equal(math.available(100),100);
   assert.equal(math.unlocked(5,5),true);assert.equal(math.unlocked(5,6),false);
-  console.log('Checks passed: same-account permission retention, account-switch isolation, silent-first Drive auth with popup fallback, silent-only renewal without a popup, blocked-popup recovery, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math.');
+  // Pending reset + expired Drive token: sync() must still renew the
+  // token (silent) so Erase can run again, and must not reconcile.
+  const syncStart=source.indexOf('async function sync()');
+  const syncEnd=source.indexOf('async function drive(',syncStart);
+  assert(syncStart>=0&&syncEnd>syncStart);
+  let reconcileCalls=0;
+  c.reconcile=async()=>{reconcileCalls++;};
+  c.resets={};c.navigator={onLine:true};
+  vm.runInContext(source.slice(syncStart,syncEnd),c);
+  c.resets={bob:{generation:'g1',pending:true}};
+  c.access='';c.expires=0;c.connecting=false;
+  const reqBeforePending=requests;
+  await c.sync();
+  assert.equal(requests,reqBeforePending+1,'sync with a pending reset and expired token must attempt silent renewal');
+  assert.deepEqual(prompts.slice(-1),['none']);
+  assert.equal(reconcileCalls,0,'sync with a pending reset must not reconcile');
+  assert.equal(statusLog[statusLog.length-1],'Signed in. Renewing Google sync permission…');
+  // Pending reset + valid token: no renewal, no reconcile, still points at Erase.
+  c.access='good';c.expires=Date.now()+3600000;c.connecting=false;
+  const reqBeforeValid=requests;
+  await c.sync();
+  assert.equal(requests,reqBeforeValid,'sync with a pending reset and valid token must not renew');
+  assert.equal(reconcileCalls,0);
+  assert.equal(statusLog[statusLog.length-1],'Reset incomplete. Use Erase learning progress again to finish; backup is paused.');
+  // No pending reset: the normal path still reconciles.
+  c.resets={};
+  await c.sync();
+  assert.equal(reconcileCalls,1,'sync without a pending reset must reconcile');
+  // Erase guard with an expired Drive token: it must renew permission
+  // (via connect) instead of refusing, and must not delete anything.
+  const rpStart=source.indexOf('resetProgress=async function()');
+  const rpEnd=source.indexOf('const version=document.querySelector',rpStart);
+  assert(rpStart>=0&&rpEnd>rpStart);
+  const alerts=[];
+  c.alert=(m)=>alerts.push(m);
+  vm.runInContext(source.slice(rpStart,rpEnd),c);
+  c.access='';c.expires=0;c.connecting=false;c.busy=false;
+  const reqBeforeErase=requests;
+  await c.resetProgress();
+  assert.equal(requests,reqBeforeErase+1,'erase with an expired token must attempt renewal');
+  assert.deepEqual(prompts.slice(-1),['none']);
+  assert.equal(alerts.length,1);
+  assert.ok(/renewing first/.test(alerts[0])&&/tap Erase learning progress again/.test(alerts[0]),'erase must tell the user to retry after connecting, got: '+alerts[0]);
+  assert.equal(c.access,'','erase must not proceed without a token');
+  console.log('Checks passed: same-account permission retention, account-switch isolation, silent-first Drive auth with popup fallback, silent-only renewal without a popup, blocked-popup recovery, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math, pending-reset token renewal without reconcile, erase guard renews instead of refusing.');
 })().catch(e=>{console.error(e);process.exitCode=1});
