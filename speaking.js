@@ -22,6 +22,9 @@
 //   3. On-device Whisper, only when the learner switched it on in
 //      Settings (enabling it downloads the ~40 MB model, once). The same
 //      recording is decoded to 16 kHz mono and transcribed on the device.
+//      When Whisper is on, steps 2 and 3 run at the same time and both
+//      transcripts go through the checker — the more correct one wins,
+//      so a word one of them mishears can still be caught by the other.
 //      Settings also offers "Always use Whisper": when it is on, steps
 //      1-2 are skipped and every recording goes straight to the model.
 //   4. A written question, with no penalty.
@@ -227,6 +230,8 @@
   let recorder = null;
   let recordChunks = null;
   let recordTimer = null;
+  let silenceTimer = null;
+  let silenceCtx = null;
   let recordMime = '';
   function stopTracks(stream) {
     try { (stream && stream.getTracks ? stream.getTracks() : []).forEach((tr) => { if (tr.stop) tr.stop(); }); } catch (e) { /* ignore */ }
@@ -268,9 +273,47 @@
     setStatus('Recording… tap the microphone again to stop.');
     setMicLabel('⏹ Tap to stop');
     recordTimer = setTimeout(() => { stopRecording(); }, 8000);
+    watchSilence(stream);
+  }
+  // Silence auto-stop: end the recording a second after the learner stops
+  // speaking, instead of waiting for a tap or the 8 s cap. Watches the mic
+  // level through an AnalyserNode; if Web Audio cannot watch the stream,
+  // recording simply falls back to the tap / 8 s cap.
+  function watchSilence(stream) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch (e) { /* ignore */ } }
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      src.connect(analyser);
+      const buf = new Uint8Array(analyser.fftSize);
+      const startedAt = Date.now();
+      let heard = false;
+      let quietSince = 0;
+      silenceCtx = ctx;
+      silenceTimer = setInterval(() => {
+        if (!recorder) { stopSilenceWatch(); return; }
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+        const rms = Math.sqrt(sum / buf.length);
+        if (rms > 0.02) { heard = true; quietSince = 0; return; }
+        if (!heard) return;
+        if (!quietSince) { quietSince = Date.now(); return; }
+        if (Date.now() - quietSince >= 1000 && Date.now() - startedAt >= 800) stopRecording();
+      }, 100);
+    } catch (e) { /* silence detection unavailable; the tap / 8 s cap still applies */ }
+  }
+  function stopSilenceWatch() {
+    if (silenceTimer) { clearInterval(silenceTimer); silenceTimer = null; }
+    if (silenceCtx) { try { silenceCtx.close(); } catch (e) { /* ignore */ } silenceCtx = null; }
   }
   function stopRecording() {
     if (recordTimer) { clearTimeout(recordTimer); recordTimer = null; }
+    stopSilenceWatch();
     if (recorder) {
       try { recorder.stop(); } catch (e) { recorder = null; }
     }
@@ -302,11 +345,14 @@
     let text = '';
     if (forced) {
       text = await transcribeWithWhisper(blob);
+    } else if (state.settings.whisper && window.duolibeeWhisper) {
+      // Both transcribers run at once and both transcripts go through the
+      // checker; the more correct one wins. Two independent hearings beat
+      // one, and running them together is never slower than running them
+      // one after the other.
+      text = await transcribeInParallel(blob, ex);
     } else {
       text = await transcribeOnServer(blob);
-      if (!text && state.settings.whisper && window.duolibeeWhisper) {
-        text = await transcribeWithWhisper(blob);
-      }
     }
     if (text) {
       session.speakHeard = text;
@@ -330,6 +376,29 @@
     } catch (e) {
       return '';
     }
+  }
+  // Run the server and on-device Whisper at the same time, check both
+  // transcripts against the target, and keep the more correct one. An
+  // accepted transcript always beats an unaccepted one; among equals, the
+  // closer match wins. Returns '' when neither heard anything.
+  async function transcribeInParallel(blob, ex) {
+    const results = await Promise.all([
+      transcribeOnServer(blob).catch(() => ''),
+      transcribeWithWhisper(blob).catch(() => ''),
+    ]);
+    const candidates = results.filter((t) => t);
+    if (!candidates.length) return '';
+    let best = candidates[0];
+    let bestScore = speakSimilarity(best, ex.item.t);
+    let bestAccepted = speakAccepted(best, ex.item);
+    for (const t of candidates.slice(1)) {
+      const score = speakSimilarity(t, ex.item.t);
+      const acc = speakAccepted(t, ex.item);
+      if ((acc && !bestAccepted) || (acc === bestAccepted && score > bestScore)) {
+        best = t; bestScore = score; bestAccepted = acc;
+      }
+    }
+    return best;
   }
   // On-device Whisper. Decodes the recording to 16 kHz mono first, because
   // that is what the model expects. Returns the transcript, or ''.
@@ -439,7 +508,7 @@
   // Exposed for tests: the matcher, the environment detection, and the
   // recording path (so tests can drive it without a real microphone).
   window.duolibeeSpeakingEnv = { isIOS, isInAppBrowser, isStandaloneWebApp };
-  window.duolibeeSpeaking = { startRecording, stopRecording, transcribeOnServer, transcribeWithWhisper, resampleTo16k, whisperForced };
+  window.duolibeeSpeaking = { startRecording, stopRecording, transcribeOnServer, transcribeWithWhisper, transcribeInParallel, resampleTo16k, whisperForced };
   window.speakAccepted = speakAccepted;
   window.speakSimilarity = speakSimilarity;
   window.speakSupported = speakSupported;

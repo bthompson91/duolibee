@@ -955,6 +955,191 @@ for (const f of order) {
   console.log('sentence translate answered:', JSON.stringify(sentenceAnswered));
   assert.strictEqual(sentenceAnswered.correct, 1, 'typing the sentence must grade correct');
 
+  // N. Parallel transcription: server and Whisper run at once; the more
+  // correct transcript wins. Server wrong + Whisper right -> Whisper wins,
+  // and vice versa; when both are wrong, the closer guess is shown.
+  vm.runInContext(`
+    state.settings.forceWhisper = false;
+    state.settings.whisper = true;
+    window.__serverTranscript = null;
+    window.__whisperTranscript = null;
+    window.__parallelServerCalls = 0;
+    window.__parallelWhisperCalls = 0;
+    window.duolibeeWhisper = {
+      ensureLoaded: async () => {},
+      transcribe: async (audio) => { window.__parallelWhisperCalls++; return window.__whisperTranscript || ''; },
+      status: 'ready',
+    };
+  `, sandbox);
+  const fetchBeforeParallel = sandbox.fetch;
+  sandbox.fetch = async (url, options) => {
+    const u = String(url && url.url ? url.url : url);
+    if (u.includes('/transcribe')) { sandbox.__parallelServerCalls++; return { ok: true, status: 200, json: async () => ({ transcript: sandbox.__serverTranscript || '' }) }; }
+    return fetchBeforeParallel(url, options);
+  };
+  const par1 = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 16); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
+      const target = session.exercises[idx].item.t;
+      window.__serverTranscript = 'zzz wrong';
+      window.__whisperTranscript = target;
+      window.__parallelServerCalls = 0; window.__parallelWhisperCalls = 0;
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx, target };
+    })()
+  `, sandbox);
+  await sleep(200);
+  const par1After = vm.runInContext(`({ heard: session.speakHeard, serverCalls: window.__parallelServerCalls, whisperCalls: window.__parallelWhisperCalls })`, sandbox);
+  console.log('parallel, server wrong + Whisper right:', JSON.stringify(par1After));
+  assert.strictEqual(par1After.heard, par1.target, 'Whisper should win when the server is wrong');
+  assert.strictEqual(par1After.serverCalls, 1, 'the server must be asked in the parallel path');
+  assert.strictEqual(par1After.whisperCalls, 1, 'Whisper must be asked in the parallel path');
+  const par2 = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 17); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
+      const target = session.exercises[idx].item.t;
+      window.__serverTranscript = target;
+      window.__whisperTranscript = 'zzz wrong';
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx, target };
+    })()
+  `, sandbox);
+  await sleep(200);
+  const par2After = vm.runInContext(`({ heard: session.speakHeard })`, sandbox);
+  console.log('parallel, server right + Whisper wrong:', JSON.stringify(par2After));
+  assert.strictEqual(par2After.heard, par2.target, 'the server should win when Whisper is wrong');
+  const par3 = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 18); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
+      const target = session.exercises[idx].item.t;
+      // Both wrong; the server's near-miss is closer than Whisper's noise.
+      window.__serverTranscript = target.slice(0, Math.max(1, target.length - 2));
+      window.__whisperTranscript = 'zzz';
+      index = idx; renderExercise();
+      startSpeaking();
+      return { idx, target, nearMiss: window.__serverTranscript };
+    })()
+  `, sandbox);
+  await sleep(200);
+  const par3After = vm.runInContext(`({ heard: session.speakHeard, type: session.exercises[index].type })`, sandbox);
+  sandbox.fetch = fetchBeforeParallel;
+  console.log('parallel, both wrong:', JSON.stringify(par3After));
+  assert.strictEqual(par3After.heard, par3.nearMiss, 'the closer transcript should be shown when both are wrong');
+  assert.strictEqual(par3After.type, 'speak', 'a non-empty transcript must keep the exercise');
+
+  // O. Silence detection: speech, then a second of quiet, stops the
+  // recording early — well before the 8 s cap — and the clipped recording
+  // is still transcribed.
+  vm.runInContext(`
+    window.__micLevel = 0;
+    window.__recorderStopped = false;
+    window.__recorderStopAt = null;
+    window.__recordStartedAt = null;
+    window.AudioContext = class {
+      constructor() { this.state = 'running'; }
+      resume() { return Promise.resolve(); }
+      createMediaStreamSource() { return { connect() {} }; }
+      createAnalyser() {
+        return {
+          fftSize: 512,
+          getByteTimeDomainData(buf) {
+            const v = window.__micLevel ? 170 : 128;
+            for (let i = 0; i < buf.length; i++) buf[i] = v;
+          },
+        };
+      }
+      async decodeAudioData() { return { sampleRate: 48000, getChannelData: () => new Float32Array([0.1, 0.2, 0.3]) }; }
+      close() {}
+    };
+    window.MediaRecorder = class {
+      constructor(stream) { this.stream = stream; this.mimeType = 'audio/mp4'; }
+      start() { window.__recordStartedAt = Date.now(); }
+      stop() {
+        window.__recorderStopped = true;
+        window.__recorderStopAt = Date.now();
+        if (this.ondataavailable) this.ondataavailable({ data: new Blob(['fake-audio'], { type: 'audio/mp4' }) });
+        if (this.onstop) this.onstop();
+      }
+    };
+    navigator.mediaDevices = { getUserMedia: () => Promise.resolve({ getTracks: () => [] }) };
+    state.settings.whisper = false;
+    state.settings.forceWhisper = false;
+  `, sandbox);
+  const fetchBeforeSilence = sandbox.fetch;
+  sandbox.fetch = async (url, options) => {
+    const u = String(url && url.url ? url.url : url);
+    if (u.includes('/transcribe')) return { ok: true, status: 200, json: async () => ({ transcript: sandbox.__serverTranscript || '' }) };
+    return fetchBeforeSilence(url, options);
+  };
+  const sil = vm.runInContext(`
+    (function () {
+      session = LESSONS.find(l => l.id === 21); index = 0; correct = 0; delete session._answeredIndex;
+      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
+      window.__serverTranscript = session.exercises[idx].item.t;
+      index = idx; renderExercise();
+      window.__micLevel = 1;
+      startSpeaking();
+      return { idx, target: session.exercises[idx].item.t };
+    })()
+  `, sandbox);
+  await sleep(300);
+  vm.runInContext(`window.__micLevel = 0;`, sandbox);
+  await sleep(1800);
+  const silAfter = vm.runInContext(`({
+    stopped: window.__recorderStopped,
+    elapsed: window.__recorderStopAt - window.__recordStartedAt,
+    heard: session.speakHeard,
+  })`, sandbox);
+  sandbox.fetch = fetchBeforeSilence;
+  console.log('silence detection:', JSON.stringify(silAfter));
+  assert.strictEqual(silAfter.stopped, true, 'a second of silence after speech must stop the recording');
+  assert.ok(silAfter.elapsed >= 1000 && silAfter.elapsed < 4000, 'the silence stop should come ~1 s after speech ends, not at the 8 s cap, got ' + silAfter.elapsed);
+  assert.strictEqual(silAfter.heard, sil.target, 'the clipped recording must still be transcribed');
+  // Restore the auto-stop recorder for later tests.
+  vm.runInContext(`
+    window.MediaRecorder = class {
+      constructor(stream) { this.stream = stream; this.mimeType = 'audio/mp4'; }
+      start() {
+        const self = this;
+        setTimeout(() => {
+          if (self.ondataavailable) self.ondataavailable({ data: new Blob(['fake-audio'], { type: 'audio/mp4' }) });
+          if (self.onstop) self.onstop();
+        }, 0);
+      }
+      stop() {}
+    };
+  `, sandbox);
+
+  // P. Kumusta: the models sometimes spell it as its Spanish source,
+  // "como esta" — that counts as correct, with or without accents, and
+  // the variant is carried in the lesson data.
+  const kumustaTests = vm.runInContext(`
+    (function () {
+      const item = { t: 'Kumusta', e: 'Hello', v: ['como esta'] };
+      const dataItem = ALL.find((it) => it.t === 'Kumusta');
+      return {
+        plain: window.speakAccepted('Kumusta', item),
+        comoEsta: window.speakAccepted('como esta', item),
+        accented: window.speakAccepted('¿Cómo está?', item),
+        normAccented: norm('¿Cómo está?'),
+        wrong: window.speakAccepted('Salamat', item),
+        dataVariant: !!(dataItem && Array.isArray(dataItem.v) && dataItem.v.indexOf('como esta') >= 0),
+      };
+    })()
+  `, sandbox);
+  console.log('Kumusta variant:', JSON.stringify(kumustaTests));
+  assert.strictEqual(kumustaTests.plain, true, 'Kumusta should be accepted');
+  assert.strictEqual(kumustaTests.comoEsta, true, 'como esta should count for Kumusta');
+  assert.strictEqual(kumustaTests.accented, true, '¿Cómo está? should count for Kumusta');
+  assert.strictEqual(kumustaTests.normAccented, 'como esta', 'norm should transliterate accents, got ' + kumustaTests.normAccented);
+  assert.strictEqual(kumustaTests.wrong, false, 'Salamat must not count for Kumusta');
+  assert.strictEqual(kumustaTests.dataVariant, true, 'lessons.json Kumusta must carry the como esta variant');
+
   // ---- Environment detection: Home Screen app, in-app browser, Safari ----
   const envTests = vm.runInContext(`
     (function () {
