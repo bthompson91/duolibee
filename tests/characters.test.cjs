@@ -300,6 +300,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       out.unknownSrcUnchanged = img.src === before;
       window.matchMedia = () => ({ matches: true });
       out.reduced = window.duolibeeCharacters.startTalking(img, 'tito-bong', 'happy', 30);
+      out.reducedIdle = window.duolibeeCharacters.startIdle(img, 'tito-bong', 'happy');
       window.duolibeeCharacters.stopTalking();
       delete window.matchMedia;
       out.reducedSrcUnchanged = img.src === before;
@@ -309,11 +310,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   assert.strictEqual(edge.unknown, false, 'unknown character does not animate');
   assert.strictEqual(edge.unknownSrcUnchanged, true, 'unknown character leaves src alone');
   assert.strictEqual(edge.reduced, false, 'reduced motion does not animate');
+  assert.strictEqual(edge.reducedIdle, false, 'reduced motion does not idle-animate');
   assert.strictEqual(edge.reducedSrcUnchanged, true, 'reduced motion leaves src alone');
   console.log('8. unknown character and reduced motion degrade silently: OK');
 
   // Speech hooks: duolibeeSpeechStart animates the on-screen speaker
-  // portrait; duolibeeSpeechEnd settles it on mouth-closed.
+  // portrait at talking speed; duolibeeSpeechEnd drops back to the idle
+  // sway (the mouth keeps moving, slower) instead of stopping.
   const hookSeen = [];
   vm.runInContext(`
     (function () {
@@ -328,10 +331,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     hookSeen.push(vm.runInContext(`document.getElementById('speaker-portrait').src`, sandbox));
   }
   vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
-  const hookSettled = vm.runInContext(`document.getElementById('speaker-portrait').src`, sandbox);
+  const hookIdleSeen = [];
+  for (let i = 0; i < 30; i++) {
+    await sleep(40);
+    hookIdleSeen.push(vm.runInContext(`document.getElementById('speaker-portrait').src`, sandbox));
+  }
+  vm.runInContext('window.duolibeeCharacters.stopTalking()', sandbox);
   assert.ok(hookSeen.includes('assets/characters/jetjet-happy-open.png'), 'speech start animates the speaker portrait, saw: ' + [...new Set(hookSeen)].join(', '));
-  assert.strictEqual(hookSettled, 'assets/characters/jetjet-happy-closed.png', 'speech end settles on mouth-closed');
-  console.log('9. speech start/end hooks drive the on-screen speaker portrait: OK');
+  assert.ok(hookIdleSeen.includes('assets/characters/jetjet-happy-open.png'), 'speech end returns to the idle sway, saw: ' + [...new Set(hookIdleSeen)].join(', '));
+  console.log('9. speech start drives the speaker portrait; speech end returns to idle: OK');
 
   // A full lesson still completes with the character layer on.
   for (const el of byId.values()) el.disabled = false;
@@ -390,11 +398,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(40);
     hostSeen.push(vm.runInContext(`document.getElementById('host-portrait').src`, sandbox));
   }
-  vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
-  const hostSettled = vm.runInContext(`document.getElementById('host-portrait').src`, sandbox);
+  // Speech end must return the host portrait to idle, not stop it: the
+  // speaker lookup is suppressed again so backToIdle finds the host.
+  vm.runInContext(`
+    (function () {
+      const origGet = document.getElementById;
+      document.getElementById = (id) => (id === 'speaker-portrait' ? null : origGet(id));
+      window.duolibeeSpeechEnd();
+      document.getElementById = origGet;
+    })()
+  `, sandbox);
+  const hostIdleSeen = [];
+  for (let i = 0; i < 30; i++) {
+    await sleep(40);
+    hostIdleSeen.push(vm.runInContext(`document.getElementById('host-portrait').src`, sandbox));
+  }
+  vm.runInContext('window.duolibeeCharacters.stopTalking()', sandbox);
   assert.ok(hostSeen.includes('assets/characters/lumpy-neutral-open.png'), 'speech start animates the host portrait, saw: ' + [...new Set(hostSeen)].join(', '));
-  assert.strictEqual(hostSettled, 'assets/characters/lumpy-neutral-closed.png', 'speech end settles the host portrait on mouth-closed');
-  console.log('11. speech start/end hooks drive the host portrait when no speaker portrait is present: OK');
+  assert.ok(hostIdleSeen.includes('assets/characters/lumpy-neutral-open.png'), 'speech end returns the host portrait to idle, saw: ' + [...new Set(hostIdleSeen)].join(', '));
+  console.log('11. speech start drives the host portrait when no speaker portrait is present; speech end returns to idle: OK');
 
   // Every exercise without a speaker card shows a compact host strip
   // (portrait + name, no intro), so speech always has a portrait to
@@ -415,9 +437,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // play() starts the talking animation at speak time, even when the
   // utterance onstart event never fires (iOS drops it): the portrait
-  // must move while the line plays, and settle when onend fires.
+  // must move while the line plays, and drop back to idle when onend fires.
   const playSeen = [];
-  const playSettled = await (async () => {
+  const playIdleSeen = await (async () => {
     vm.runInContext(`
       (function () {
         SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
@@ -439,13 +461,45 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
     // No onstart was ever fired by the stub. Fire onend by hand.
     vm.runInContext(`(function () { const u = window.__spoken[0]; if (u && u.onend) u.onend(); })()`, sandbox);
-    const settled = vm.runInContext(`document.getElementById('speaker-portrait').src`, sandbox);
-    vm.runInContext(`speechSynthesis = undefined;`, sandbox);
-    return settled;
+    const idleSeen = [];
+    for (let i = 0; i < 30; i++) {
+      await sleep(40);
+      idleSeen.push(vm.runInContext(`document.getElementById('speaker-portrait').src`, sandbox));
+    }
+    vm.runInContext(`window.duolibeeCharacters.stopTalking(); speechSynthesis = undefined;`, sandbox);
+    return idleSeen;
   })();
   assert.ok(playSeen.includes('assets/characters/jetjet-happy-open.png'), 'play() animates the portrait without any onstart event, saw: ' + [...new Set(playSeen)].join(', '));
-  assert.strictEqual(playSettled, 'assets/characters/jetjet-happy-closed.png', 'onend settles the portrait on mouth-closed');
-  console.log('13. play() starts the animation without onstart; onend settles it: OK');
+  assert.ok(playIdleSeen.includes('assets/characters/jetjet-happy-open.png'), 'onend returns the portrait to idle, saw: ' + [...new Set(playIdleSeen)].join(', '));
+  console.log('13. play() starts the animation without onstart; onend returns to idle: OK');
+
+  // Idle sway with no speech at all: rendering a choice exercise starts
+  // the host portrait moving on its own — no duolibeeSpeechStart call.
+  // The speaker lookup is suppressed (as in step 11) so the host strip
+  // is the portrait the wrapper idles, matching the real app where no
+  // speaker card is on screen for a choice exercise.
+  const idleSeen = [];
+  vm.runInContext(`
+    (function () {
+      const origGet = document.getElementById;
+      document.getElementById = (id) => (id === 'speaker-portrait' ? null : origGet(id));
+      const img = document.getElementById('host-portrait');
+      img.dataset.character = 'lumpy';
+      img.dataset.state = 'neutral';
+      startLesson(1);
+      const idx = session.exercises.findIndex(e => e.type === 'choice');
+      index = idx; renderExercise();
+      document.getElementById = origGet;
+    })()
+  `, sandbox);
+  for (let i = 0; i < 30; i++) {
+    await sleep(40);
+    idleSeen.push(vm.runInContext(`document.getElementById('host-portrait').src`, sandbox));
+  }
+  vm.runInContext('window.duolibeeCharacters.stopTalking()', sandbox);
+  assert.ok(idleSeen.includes('assets/characters/lumpy-neutral-open.png'), 'host portrait idles with no speech, saw: ' + [...new Set(idleSeen)].join(', '));
+  assert.ok(idleSeen.includes('assets/characters/lumpy-neutral-closed.png'), 'idle sway also closes the mouth');
+  console.log('14. host portrait idles with no speech: OK');
 
   console.log('CHARACTERS: PASS');
   process.exit(0);

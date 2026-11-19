@@ -9,14 +9,15 @@
 // portrait simply stays on its mouth-closed frame.
 //
 // Art lives in assets/characters/ (downscaled to 512px). The registry is
-// data/characters.json. The talking animation alternates a character's
-// mouth-closed / mouth-open frames for the current state while a line is
-// being spoken; it settles on mouth-closed when speech ends, and never
-// animates when the learner prefers reduced motion. answer-speech.js
-// starts it at speak time (play()) as well as on the utterance onstart,
-// because iOS often never fires the utterance events at all, and a 15s
-// safety cap stops it if speech end is never reported. A portrait is
-// shown on every exercise (speaker card, else a compact host strip) so
+// data/characters.json. Portraits always animate: a slow idle sway (mouth
+// opens/closes gently) whenever a portrait is on screen, switching to the
+// faster talking cadence while a line is being spoken, and back to idle
+// when speech ends. It never animates when the learner prefers reduced
+// motion. answer-speech.js starts the talking cadence at speak time
+// (play()) as well as on the utterance onstart, because iOS often never
+// fires the utterance events at all, and a 15s safety cap drops the
+// talking cadence back to idle if speech end is never reported. A portrait
+// is shown on every exercise (speaker card, else a compact host strip) so
 // the animation is visible wherever speech can play.
 (() => {
   let REGISTRY = null;
@@ -92,6 +93,10 @@
   ready.then(fillPortraits);
 
   // ---- Talking animation ----
+  // Portraits always animate: idle sway whenever one is on screen, faster
+  // talking cadence while a line is spoken, back to idle when speech ends.
+  const TALK_MS = 180;
+  const IDLE_MS = 500;
   let talkTimer = null;
   let talkCap = null;
   let talkImg = null;
@@ -105,7 +110,7 @@
       return false;
     }
   }
-  function startTalking(img, id, state, intervalMs) {
+  function startAnimation(img, id, state, intervalMs, capMs) {
     try {
       stopTalking();
       if (!img || reducedMotion()) return false;
@@ -123,15 +128,23 @@
           talkOpen = !talkOpen;
           talkImg.src = talkOpen ? talkOpenSrc : talkClosedSrc;
         } catch (e) { /* best-effort */ }
-      }, intervalMs || 180);
-      // Safety cap: if speech end is never reported (iOS sometimes drops
-      // the utterance events entirely), the mouth must not flap forever.
+      }, intervalMs);
+      // Safety cap (talking only): if speech end is never reported (iOS
+      // sometimes drops the utterance events entirely), drop back to the
+      // idle sway instead of flapping at talking speed forever. Idle has
+      // no cap — it runs until the portrait changes or speech starts.
       if (talkCap) clearTimeout(talkCap);
-      talkCap = setTimeout(() => { stopTalking(); }, 15000);
+      talkCap = capMs ? setTimeout(() => { backToIdle(); }, capMs) : null;
       return true;
     } catch (e) {
       return false;
     }
+  }
+  function startTalking(img, id, state, intervalMs) {
+    return startAnimation(img, id, state, intervalMs || TALK_MS, 15000);
+  }
+  function startIdle(img, id, state) {
+    return startAnimation(img, id, state, IDLE_MS, 0);
   }
   function stopTalking() {
     try {
@@ -143,6 +156,22 @@
     talkClosedSrc = null;
     talkOpenSrc = null;
     talkOpen = false;
+  }
+  // Idle-animate the portrait on screen (speaker else host). Used after
+  // every render and whenever speech ends, so the portrait never sits
+  // still while it is visible.
+  function startIdleOnScreen() {
+    try {
+      const img = document.getElementById ? (document.getElementById('speaker-portrait') || document.getElementById('host-portrait')) : null;
+      if (!img) return false;
+      const id = img.dataset ? img.dataset.character : null;
+      const state = (img.dataset && img.dataset.state) || 'neutral';
+      return startIdle(img, id, state);
+    } catch (e) { return false; }
+  }
+  function backToIdle() {
+    try { stopTalking(); } catch (e) { /* best-effort */ }
+    return startIdleOnScreen();
   }
   // Called by answer-speech.js around speech playback: at speak time in
   // play() as well as on the utterance onstart, because iOS often never
@@ -159,7 +188,7 @@
     } catch (e) { /* best-effort */ }
   };
   window.duolibeeSpeechEnd = function () {
-    try { stopTalking(); } catch (e) { /* best-effort */ }
+    try { backToIdle(); } catch (e) { /* best-effort */ }
   };
 
   // ---- Render: host card on the learn screen, speaker card on sentence
@@ -188,6 +217,9 @@
       div.innerHTML = html;
       card.prepend(div);
       fillPortraits();
+      // The portrait never sits still while it is visible: idle sway
+      // starts here, and speech switches it to the talking cadence.
+      startIdleOnScreen();
     } catch (e) { /* rendering the lesson must never break */ }
   };
 
@@ -195,6 +227,7 @@
   window.duolibeeCharacters = {
     ready, characterById, displayName, artFor, portraitFor,
     hostCardHTML, speakerCardHTML, fillPortraits, startTalking, stopTalking,
+    startIdle, startIdleOnScreen, backToIdle,
     registry: () => REGISTRY,
   };
 })();
