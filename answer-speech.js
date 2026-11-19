@@ -38,8 +38,52 @@
     return audioManifestPromise;
   }
   loadAudioManifest();
+  // Pre-cache the current lesson's clips once the manifest arrives, in case
+  // the lesson started before the manifest finished loading.
+  loadAudioManifest().then(() => preloadLessonAudio());
   // Exposed for tests (mirrors characters.js exposing duolibeeCharacters).
-  window.duolibeeLessonAudio = { load: loadAudioManifest, fileFor: audioFileFor, characterFor: audioCharacterFor, play };
+  window.duolibeeLessonAudio = { load: loadAudioManifest, fileFor: audioFileFor, characterFor: audioCharacterFor, play, preload: preloadLessonAudio };
+  // Pre-cache every clip a lesson needs (each word in Tagalog + English, each
+  // sentence in Tagalog + English) so the first tap on any of them plays
+  // instantly instead of waiting on a download. Fetches go through the
+  // browser cache, so the Audio elements created later by play() reuse them.
+  function preloadLessonAudio() {
+    try {
+      if (!audioManifest || !session || !session.items) return;
+      const host = session.host || 'lumpy';
+      const files = new Set();
+      (session.items || []).forEach(it => {
+        const f1 = audioFileFor(it.t, host, false); if (f1) files.add(f1);
+        const f2 = audioFileFor(it.e, host, true); if (f2) files.add(f2);
+      });
+      const th = session.category ? (THEMES || []).find(t => t.name === session.category) : null;
+      (session.exercises || []).forEach(ex => {
+        if (!ex) return;
+        const ch = ex.speaker || host;
+        // The build exercise carries the sentence in ex.answer; the speak
+        // exercises (word and sentence) carry their phrase in ex.item.
+        if (ex.answer && typeof ex.answer === 'string') {
+          const f = audioFileFor(ex.answer, ch, false); if (f) files.add(f);
+          if (th) {
+            const s = (th.sentences || []).find(s => norm(s.t) === norm(ex.answer));
+            if (s && s.e) { const fe = audioFileFor(s.e, ch, true); if (fe) files.add(fe); }
+          }
+        }
+        if (ex.item && typeof ex.item.t === 'string') {
+          const f = audioFileFor(ex.item.t, ch, false); if (f) files.add(f);
+          if (typeof ex.item.e === 'string') { const fe = audioFileFor(ex.item.e, ch, true); if (fe) files.add(fe); }
+        }
+      });
+      if (typeof fetch !== 'function') return;
+      files.forEach(f => { try { fetch('assets/audio/' + f).catch(() => {}); } catch (e) { /* best-effort */ } });
+    } catch (e) { /* pre-caching must never break a lesson */ }
+  }
+  // At lesson start, pre-cache that lesson's clips (the manifest load above
+  // covers the case where the lesson was already in progress).
+  if (typeof startLesson === 'function') {
+    const _startLesson = startLesson;
+    startLesson = function(id) { const r = _startLesson(id); preloadLessonAudio(); return r; };
+  }
   function audioCharacterFor(text) {
     const value = norm(text);
     try {
@@ -49,6 +93,9 @@
       if (th) {
         const s = (th.sentences || []).find(s => norm(s.t) === value);
         if (s && s.speaker) return s.speaker;
+        // English text: the sentence whose translation this is.
+        const se = (th.sentences || []).find(s => norm(s.e) === value);
+        if (se && se.speaker) return se.speaker;
       }
       if (session && session.host) return session.host;
       const it = (ALL || []).find(x => norm(x.t) === value);
@@ -56,12 +103,24 @@
         const t2 = (THEMES || []).find(t => t.name === it.theme);
         if (t2 && t2.host) return t2.host;
       }
+      // English text outside a lesson: the word whose meaning this is.
+      const itE = (ALL || []).find(x => norm(x.e) === value);
+      if (itE) {
+        const t3 = (THEMES || []).find(t => t.name === itE.theme);
+        if (t3 && t3.host) return t3.host;
+      }
     } catch (e) { /* fall through to Lumpy */ }
     return 'lumpy';
   }
-  function audioFileFor(text, character) {
+  function audioFileFor(text, character, english) {
     if (!audioManifest) return null;
-    return audioManifest.entries[character + '|' + text] || audioManifest.entries[character + '|' + norm(text)] || null;
+    const lang = english ? 'en' : 'tl';
+    const e = audioManifest.entries;
+    // v2 keys: character|lang|text (raw, then normalized). v1 manifests had
+    // character|text with no language; try those too so an old manifest
+    // still plays Tagalog instead of silently falling back to synthesis.
+    return e[character + '|' + lang + '|' + text] || e[character + '|' + lang + '|' + norm(text)]
+      || e[character + '|' + text] || e[character + '|' + norm(text)] || null;
   }
   let activeAudio = null;
   function stopAudioFile() {
@@ -88,11 +147,10 @@
   }
   function play(text, english = false, slow = false, character) {
     if (!text || state.settings.muted) return;
-    if (!english) {
-      if (!audioManifest) loadAudioManifest();
-      const file = audioFileFor(text, character || audioCharacterFor(text));
-      if (file && playAudioFile(file, slow)) return;
-    }
+    // Recorded clips first, in both languages; system voice is the fallback.
+    if (!audioManifest) loadAudioManifest();
+    const file = audioFileFor(text, character || audioCharacterFor(text), english);
+    if (file && playAudioFile(file, slow)) return;
     if (!window.speechSynthesis) return status('Device speech is unavailable.');
     const selected = route(english);
     active = null; stopAudioFile(); speechSynthesis.cancel();
@@ -124,7 +182,7 @@
       else if (/testVoice/.test(button.getAttribute('onclick') || '')) { button.textContent = '🔊 Test audio'; button.onclick = testVoice; }
     });
     const selected = route(false), p = document.createElement('p');
-    p.textContent = 'Tagalog audio: ' + (selected.native ? 'system Tagalog/Filipino voice' : selected.malay ? 'system Malay voice (fallback)' : 'unavailable — no Tagalog/Filipino or Malay voice') + '. English audio: system English voice.';
+    p.textContent = 'Tagalog audio: ' + (selected.native ? 'system Tagalog/Filipino voice' : selected.malay ? 'system Malay voice (fallback)' : 'unavailable — no Tagalog/Filipino or Malay voice') + '. English audio: recorded clips where available, otherwise system English voice.';
     app.prepend(p);
     const test = document.createElement('button'); test.className = 'ghost'; test.textContent = 'Test English audio'; test.onclick = () => play('Audio test.', true); app.append(test);
   };

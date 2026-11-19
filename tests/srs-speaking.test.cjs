@@ -877,15 +877,26 @@ for (const f of order) {
   // ---- Pre-recorded lesson audio ----
   // play() prefers the generated MP3 for a phrase (words in the lesson
   // host's voice, sentences in the speaker's voice) and falls back to the
-  // system voice when there is no file. Runs before the header block so
-  // the header block still runs last.
+  // system voice when there is no file. Both languages are recorded: the
+  // manifest is v2 (character|lang|text) with a v1 key kept as a fallback.
+  // Starting a lesson pre-caches that lesson's Tagalog + English clips.
+  // Runs before the header block so the header block still runs last.
   const fetchBeforeAudio = sandbox.fetch;
+  const l1 = JSON.parse(vm.runInContext(`JSON.stringify({ host: LESSONS[0].host || THEMES[0].host, word: LESSONS[0].items[1].t, wordEn: LESSONS[0].items[1].e, sent: THEMES.find(t => t.name === LESSONS[0].category).sentences[1].t, sentEn: THEMES.find(t => t.name === LESSONS[0].category).sentences[1].e, sentSpeaker: THEMES.find(t => t.name === LESSONS[0].category).sentences[1].speaker })`, sandbox));
+  sandbox.__fetchedAudio = [];
   sandbox.fetch = async (url) => {
     const u = String(url && url.url ? url.url : url);
-    if (u.includes('manifest.json')) return { ok: true, status: 200, json: async () => ({ version: 1, entries: {
-      'lumpy|Kumusta': 'aaa111.mp3',
-      'lola-joli|Kumusta ka?': 'bbb222.mp3',
+    if (u.includes('manifest.json')) return { ok: true, status: 200, json: async () => ({ version: 2, entries: {
+      'lumpy|tl|Kumusta': 'aaa111.mp3',
+      'lola-joli|tl|Kumusta ka?': 'bbb222.mp3',
+      'lumpy|en|Thank you': 'ccc333.mp3',
+      'lumpy|Kumusta ka?': 'ddd444.mp3',
+      [l1.host + '|tl|' + l1.word]: 'lesson1word.mp3',
+      [l1.host + '|en|' + l1.wordEn]: 'lesson1word-en.mp3',
+      [l1.sentSpeaker + '|tl|' + l1.sent]: 'lesson1sent.mp3',
+      [l1.sentSpeaker + '|en|' + l1.sentEn]: 'lesson1sent-en.mp3',
     } }) };
+    if (u.startsWith('assets/audio/')) sandbox.__fetchedAudio.push(u.replace('assets/audio/', ''));
     return fetchBeforeAudio(url);
   };
   sandbox.Audio = class {
@@ -903,11 +914,18 @@ for (const f of order) {
       out.fileLola = duolibeeLessonAudio.fileFor('Kumusta ka?', 'lola-joli');
       out.fileMissing = duolibeeLessonAudio.fileFor('Kumusta', 'lola-joli');
       out.fileUnknown = duolibeeLessonAudio.fileFor('Hindi ito totoo', 'lumpy');
+      out.fileEn = duolibeeLessonAudio.fileFor('Thank you', 'lumpy', true);
+      out.fileEnWrongLang = duolibeeLessonAudio.fileFor('Thank you', 'lumpy', false);
+      out.fileV1 = duolibeeLessonAudio.fileFor('Kumusta ka?', 'lumpy', false);
+      __fetchedAudio.length = 0;
       startLesson(1);
+      out.preloaded = __fetchedAudio.slice().sort();
       out.hostChar = duolibeeLessonAudio.characterFor('Kumusta');
       const th = THEMES.find(t => t.name === session.category);
       const sent = th.sentences[0];
+      out.wordEnChar = duolibeeLessonAudio.characterFor(th.items[0].e);
       out.sentenceTextChar = duolibeeLessonAudio.characterFor(sent.t);
+      out.sentenceEnChar = duolibeeLessonAudio.characterFor(sent.e);
       out.sentenceTextSpeaker = sent.speaker;
       const ex = session.exercises.find(e => e.speaker);
       out.hasSentenceSpeaker = !!ex;
@@ -919,6 +937,8 @@ for (const f of order) {
       out.statusAfterFile = document.getElementById('speech-status').textContent;
       duolibeeLessonAudio.play('Kumusta ka?', false, false, 'lola-joli');
       out.lolaSrc = __audioCreated.length ? __audioCreated[__audioCreated.length - 1].src : null;
+      duolibeeLessonAudio.play('Thank you', true);
+      out.enSrc = __audioCreated.length ? __audioCreated[__audioCreated.length - 1].src : null;
       speak('Kumusta', true);
       out.slowRate = __audioCreated.length ? __audioCreated[__audioCreated.length - 1].playbackRate : null;
       const createdBefore = __audioCreated.length;
@@ -932,6 +952,12 @@ for (const f of order) {
   assert.strictEqual(audio.fileLola, 'bbb222.mp3', 'manifest lookup for a second character');
   assert.strictEqual(audio.fileMissing, null, 'same phrase, other character has no file');
   assert.strictEqual(audio.fileUnknown, null, 'unknown phrase has no file');
+  assert.strictEqual(audio.fileEn, 'ccc333.mp3', 'English lookup uses the en key');
+  assert.strictEqual(audio.fileEnWrongLang, null, 'an English entry is not used for Tagalog');
+  assert.strictEqual(audio.fileV1, 'ddd444.mp3', 'a v1 manifest key still plays Tagalog');
+  assert.strictEqual(audio.sentenceEnChar, audio.sentenceTextSpeaker, 'a sentence translation resolves to its speaker');
+  assert.strictEqual(audio.wordEnChar, 'lumpy', 'an English meaning resolves to the lesson host');
+  assert.deepStrictEqual(audio.preloaded, ['ccc333.mp3', 'ddd444.mp3', 'lesson1sent-en.mp3', 'lesson1sent.mp3', 'lesson1word-en.mp3', 'lesson1word.mp3'], 'lesson start pre-caches its Tagalog + English clips, got ' + JSON.stringify(audio.preloaded));
   assert.strictEqual(audio.hostChar, 'lumpy', 'word in lesson 1 uses the host (Lumpy), got ' + audio.hostChar);
   assert.strictEqual(audio.sentenceTextChar, audio.sentenceTextSpeaker, 'a sentence in the theme resolves to its speaker');
   assert.ok(audio.hasSentenceSpeaker, 'lesson 1 has a sentence exercise with a speaker');
@@ -940,10 +966,11 @@ for (const f of order) {
   assert.strictEqual(audio.playedCount, 1, 'the file played exactly once');
   assert.strictEqual(audio.statusAfterFile, 'Playing recorded audio.', 'status reports recorded audio, got ' + audio.statusAfterFile);
   assert.strictEqual(audio.lolaSrc, 'assets/audio/bbb222.mp3', 'explicit character plays that character file, got ' + audio.lolaSrc);
+  assert.strictEqual(audio.enSrc, 'assets/audio/ccc333.mp3', 'playing English plays its file, got ' + audio.enSrc);
   assert.strictEqual(audio.slowRate, 0.62, 'slow playback reduces the rate, got ' + audio.slowRate);
   assert.strictEqual(audio.fallbackCreatedAudio, 0, 'an unlisted phrase creates no Audio element');
   assert.strictEqual(audio.fallbackStatus, 'Device speech is unavailable.', 'unlisted phrase falls back to the system voice, got ' + audio.fallbackStatus);
-  console.log('LESSON AUDIO: file lookup, host/speaker voices, slow rate, fallback: OK');
+  console.log('LESSON AUDIO: file lookup, English files, v1 back-compat, lesson pre-cache, slow rate, fallback: OK');
   sandbox.fetch = fetchBeforeAudio;
 
   // ---- Header fraction: one progress number per screen ----
