@@ -1,6 +1,6 @@
 // DUOLIBEE on-device transcription (Whisper), opt-in.
 //
-// The model (whisper-tiny, ~40 MB) is downloaded only when the learner
+// The model (whisper-base, ~75 MB) is downloaded only when the learner
 // switches it on in Settings — enabling it starts the download, and the
 // browser caches the files afterwards, so it is a one-time cost. It runs
 // in a module Web Worker (transformers.js) so the lesson UI stays
@@ -14,7 +14,7 @@
 // skipped). It is only usable while Whisper itself is on, and turning
 // Whisper off clears it.
 (() => {
-  const WORKER_URL = 'whisper-worker.js?v=0.38.4';
+  const WORKER_URL = 'whisper-worker.js?v=0.39.20';
   let worker = null;
   let nextId = 0;
   const pending = new Map();
@@ -118,10 +118,10 @@
 
   function whisperStatusText() {
     if (state.settings.whisper !== true) return 'Off — the model stays downloaded on this device.';
-    if (loadState === 'ready') return 'Ready — stored on this device (~40 MB).';
+    if (loadState === 'ready') return 'Ready — stored on this device (~75 MB).';
     if (loadState === 'loading') return loadProgress || 'Downloading…';
     if (loadState === 'failed') return 'Download failed — check your connection and try again.';
-    return 'Not downloaded yet — turning it on downloads the model (~40 MB, once).';
+    return 'Not downloaded yet — turning it on downloads the model (~75 MB, once).';
   }
 
   // The force checkbox is only usable while Whisper itself is on; it is
@@ -151,7 +151,7 @@
     if (status) status.textContent = 'Starting download…';
     try {
       await window.duolibeeWhisper.ensureLoaded((text) => { if (status) status.textContent = text; });
-      if (status) status.textContent = 'Ready — stored on this device (~40 MB).';
+      if (status) status.textContent = 'Ready — stored on this device (~75 MB).';
     } catch (e) {
       state.settings.whisper = false;
       state.settings.forceWhisper = false;

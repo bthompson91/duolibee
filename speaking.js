@@ -20,7 +20,7 @@
 //      The audio is never stored. If the backend cannot be reached, or
 //      has not been deployed yet, this step is skipped silently.
 //   3. On-device Whisper, only when the learner switched it on in
-//      Settings (enabling it downloads the ~40 MB model, once). The same
+//      Settings (enabling it downloads the ~75 MB model, once). The same
 //      recording is decoded to 16 kHz mono and transcribed on the device.
 //      When Whisper is on, steps 2 and 3 run at the same time and both
 //      transcripts go through the checker — the more correct one wins,

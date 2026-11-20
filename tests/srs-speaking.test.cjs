@@ -786,6 +786,13 @@ for (const f of order) {
     delete state.settings.whisper;
   `, sandbox);
 
+  // J2. Whisper runs the base model, not tiny: the worker loads
+  // onnx-community/whisper-base, and the Settings status names its size.
+  const workerSrc = fs.readFileSync(path.join(REPO, 'whisper-worker.js'), 'utf8');
+  assert.ok(workerSrc.includes("onnx-community/whisper-base"), 'the Whisper worker must load whisper-base');
+  assert.ok(!workerSrc.includes('whisper-tiny'), 'the Whisper worker must not reference whisper-tiny');
+  assert.ok(/75 MB/.test(toggleOn.status), 'the Whisper status should name the base model size, got: ' + toggleOn.status);
+
   // K. Force Whisper: the server is never asked — the same recording goes
   // straight to the on-device model, even when the server would answer.
   vm.runInContext(`

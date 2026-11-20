@@ -2,8 +2,8 @@
 //
 // Runs in a module Web Worker so model loading and transcription never
 // block the lesson UI. Loads transformers.js from the CDN on first use,
-// then the multilingual whisper-tiny model (onnx-community/whisper-tiny,
-// ~40 MB), cached by the browser afterwards. WebGPU when the device
+// then the multilingual whisper-base model (onnx-community/whisper-base,
+// ~75 MB), cached by the browser afterwards. WebGPU when the device
 // offers it, WASM otherwise. Audio arrives as a Float32Array of 16 kHz
 // mono samples and the transcript comes back as text.
 //
@@ -33,7 +33,7 @@ async function getTranscriber(onProgress) {
       const dtype = device === 'webgpu'
         ? { encoder_model: 'fp16', decoder_model_merged: 'q4' }
         : 'q8';
-      return pipeline('automatic-speech-recognition', 'onnx-community/whisper-tiny', {
+      return pipeline('automatic-speech-recognition', 'onnx-community/whisper-base', {
         device,
         dtype,
         progress_callback: (p) => {
