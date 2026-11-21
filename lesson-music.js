@@ -24,10 +24,10 @@
 // instead of waiting for the session to spin up.
 (() => {
   // The tracks are mastered songs (mean around -18 dB), so the
-  // element's volume is the background level: clearly audible, not
+  // element's volume is a quiet background level: half volume, not
   // foreground. Ducking drops it to a whisper.
-  const NORMAL_VOLUME = 0.5;
-  const DUCK_VOLUME = 0.08;
+  const NORMAL_VOLUME = 0.25;
+  const DUCK_VOLUME = 0.04;
   // No pronunciation clip runs this long. If speech has been "playing"
   // for longer, the end event was lost (iOS often never fires the
   // utterance onend, and pausing a clip never fires onended) — clear it
