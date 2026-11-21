@@ -30,9 +30,9 @@
 // instead of waiting for the session to spin up.
 (() => {
   // The tracks are mastered songs (mean around -18 dB), so the
-  // element's volume is a quiet background level: a quarter volume, not
+  // element's volume is a quiet background level: a tenth volume, not
   // foreground. Ducking drops it to a whisper.
-  const NORMAL_VOLUME = 0.125;
+  const NORMAL_VOLUME = 0.10;
   const DUCK_VOLUME = 0.04;
   // While the microphone is recording, the track dims to 5% — quiet
   // enough to hear yourself, loud enough to know it is still playing.
