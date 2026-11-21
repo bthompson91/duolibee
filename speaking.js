@@ -14,20 +14,14 @@
 //      Screen apps or in-app browsers, or for a language the phone does
 //      not ship as a dictation language (Apple does not ship Filipino
 //      dictation, so the Tagalog tags can never work on an iPhone).
-//   2. Server transcription: the browser records a few seconds of audio
-//      (MediaRecorder — works wherever the microphone works, including
-//      the Home Screen app) and the backend transcribes it with Gemini.
-//      The audio is never stored. If the backend cannot be reached, or
-//      has not been deployed yet, this step is skipped silently.
-//   3. On-device Whisper, only when the learner switched it on in
-//      Settings (enabling it downloads the ~75 MB model, once). The same
-//      recording is decoded to 16 kHz mono and transcribed on the device.
-//      When Whisper is on, steps 2 and 3 run at the same time and both
-//      transcripts go through the checker — the more correct one wins,
-//      so a word one of them mishears can still be caught by the other.
-//      Settings also offers "Always use Whisper": when it is on, steps
-//      1-2 are skipped and every recording goes straight to the model.
-//   4. A written question, with no penalty.
+//   2. Recording transcription, by the Settings toggle — either the
+//      cloud model (the browser records a few seconds of audio with
+//      MediaRecorder, and the backend transcribes it with Gemini; the
+//      audio is never stored) or on-device Whisper (enabling it in
+//      Settings downloads the ~75 MB model, once; the same recording is
+//      decoded to 16 kHz mono and transcribed on the device). Only one
+//      runs — never both at once.
+//   3. A written question, with no penalty.
 //
 // Audio never leaves the device except to the browser's speech-recognition
 // service or to the duolibee backend for transcription, if the browser uses
@@ -318,13 +312,10 @@
       try { recorder.stop(); } catch (e) { recorder = null; }
     }
   }
-  // Forced Whisper: the learner asked for the on-device model every
-  // time, so browser recognition and the server are both skipped. The
-  // Whisper toggle itself stays the master switch — forcing it without
-  // the model downloaded would start a download mid-lesson, so the
-  // force flag alone is never enough.
-  function whisperForced() {
-    return !!(state.settings.forceWhisper && state.settings.whisper && window.duolibeeWhisper);
+  // The Settings toggle picks one transcription path for recordings:
+  // on-device Whisper, or the cloud model. Never both at once.
+  function useWhisper() {
+    return state.settings.whisper === true && !!window.duolibeeWhisper;
   }
   async function finishRecording() {
     const ex = session && session.exercises && session.exercises[index];
@@ -340,17 +331,11 @@
       setStatus('Nothing was recorded — tap the microphone and try again.');
       return;
     }
-    const forced = whisperForced();
-    setStatus(forced ? 'Transcribing on this device…' : 'Checking what you said…');
+    const whisper = useWhisper();
+    setStatus(whisper ? 'Transcribing on this device…' : 'Checking what you said…');
     let text = '';
-    if (forced) {
+    if (whisper) {
       text = await transcribeWithWhisper(blob);
-    } else if (state.settings.whisper && window.duolibeeWhisper) {
-      // Both transcribers run at once and both transcripts go through the
-      // checker; the more correct one wins. Two independent hearings beat
-      // one, and running them together is never slower than running them
-      // one after the other.
-      text = await transcribeInParallel(blob, ex);
     } else {
       text = await transcribeOnServer(blob);
     }
@@ -359,7 +344,7 @@
       setHeard(text);
       setStatus('Tap “Check my pronunciation” when you are ready.');
     } else {
-      swapToWritten(forced
+      swapToWritten(whisper
         ? 'Couldn’t check what you said — Whisper couldn’t transcribe it on this device. This became a written question instead. No penalty.'
         : 'Couldn’t check what you said — the transcription service didn’t answer. This became a written question instead. No penalty.');
     }
@@ -376,35 +361,6 @@
     } catch (e) {
       return '';
     }
-  }
-  // Run the server and on-device Whisper at the same time, and keep the
-  // more correct transcript. An accepted transcript always beats an
-  // unaccepted one; among equals, the closer match wins. Returns '' when
-  // neither heard anything.
-  // Fast path: on-device Whisper is the slow leg on a phone (several
-  // seconds for whisper-base), so when the server already returns an
-  // accepted transcript, use it at once instead of waiting for Whisper
-  // to finish. Whisper still runs as the backup: if the server is wrong
-  // or silent, we wait for Whisper and keep the better of the two.
-  async function transcribeInParallel(blob, ex) {
-    const serverP = transcribeOnServer(blob).catch(() => '');
-    const whisperP = transcribeWithWhisper(blob).catch(() => '');
-    const serverText = await serverP;
-    if (serverText && speakAccepted(serverText, ex.item)) return serverText;
-    const whisperText = await whisperP;
-    const candidates = [serverText, whisperText].filter((t) => t);
-    if (!candidates.length) return '';
-    let best = candidates[0];
-    let bestScore = speakSimilarity(best, ex.item.t);
-    let bestAccepted = speakAccepted(best, ex.item);
-    for (const t of candidates.slice(1)) {
-      const score = speakSimilarity(t, ex.item.t);
-      const acc = speakAccepted(t, ex.item);
-      if ((acc && !bestAccepted) || (acc === bestAccepted && score > bestScore)) {
-        best = t; bestScore = score; bestAccepted = acc;
-      }
-    }
-    return best;
   }
   // On-device Whisper. Decodes the recording to 16 kHz mono first, because
   // that is what the model expects. Returns the transcript, or ''.
@@ -448,9 +404,9 @@
     if (!ex || ex.type !== 'speak') return;
     if (session._answeredIndex === index) return;
     if (recorder) { stopRecording(); return; }
-    // Forced Whisper goes straight to recording: browser recognition and
-    // the server are both skipped, so there is nothing to listen with.
-    if (whisperForced()) {
+    // Whisper mode goes straight to recording: browser recognition is
+    // skipped, so the recording is transcribed on the device.
+    if (useWhisper()) {
       setStatus('Recording — Whisper will transcribe on this device.');
       startRecording();
       return;
@@ -514,7 +470,7 @@
   // Exposed for tests: the matcher, the environment detection, and the
   // recording path (so tests can drive it without a real microphone).
   window.duolibeeSpeakingEnv = { isIOS, isInAppBrowser, isStandaloneWebApp };
-  window.duolibeeSpeaking = { startRecording, stopRecording, transcribeOnServer, transcribeWithWhisper, transcribeInParallel, resampleTo16k, whisperForced };
+  window.duolibeeSpeaking = { startRecording, stopRecording, transcribeOnServer, transcribeWithWhisper, resampleTo16k, useWhisper };
   window.speakAccepted = speakAccepted;
   window.speakSimilarity = speakSimilarity;
   window.speakSupported = speakSupported;

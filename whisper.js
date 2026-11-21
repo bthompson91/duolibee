@@ -9,10 +9,10 @@
 // jsDelivr. If the model cannot load, the speaking exercise falls back to
 // a written question as usual.
 //
-// A second Settings checkbox, "Always use Whisper", makes Whisper the
-// only transcription path (browser recognition and the server are
-// skipped). It is only usable while Whisper itself is on, and turning
-// Whisper off clears it.
+// The Settings toggle picks one transcription path for recordings:
+// Whisper on this device, or the cloud model. Never both at once —
+// running them in parallel loaded the ~75 MB model while the server
+// was also working, and on iOS that could kill the page mid-lesson.
 (() => {
   const WORKER_URL = 'whisper-worker.js?v=0.39.20';
   let worker = null;
@@ -117,21 +117,11 @@
   };
 
   function whisperStatusText() {
-    if (state.settings.whisper !== true) return 'Off — the model stays downloaded on this device.';
-    if (loadState === 'ready') return 'Ready — stored on this device (~75 MB).';
+    if (state.settings.whisper !== true) return 'Cloud model — speaking questions are transcribed by the server.';
+    if (loadState === 'ready') return 'Whisper — speaking questions are transcribed on this device (~75 MB model, stored here).';
     if (loadState === 'loading') return loadProgress || 'Downloading…';
     if (loadState === 'failed') return 'Download failed — check your connection and try again.';
     return 'Not downloaded yet — turning it on downloads the model (~75 MB, once).';
-  }
-
-  // The force checkbox is only usable while Whisper itself is on; it is
-  // disabled (and unchecked) otherwise, so the force flag can never
-  // outlive the model it needs.
-  function syncForceBox() {
-    const forceBox = document.getElementById('force-whisper-setting-box');
-    if (!forceBox) return;
-    forceBox.disabled = state.settings.whisper !== true;
-    if (state.settings.whisper !== true) forceBox.checked = false;
   }
 
   // Turning it on starts the download; turning it off only stops using
@@ -139,25 +129,21 @@
   // reverts and the learner can retry.
   async function setWhisperEnabled(on) {
     state.settings.whisper = !!on;
-    if (!on) state.settings.forceWhisper = false;
     save();
     const status = document.getElementById('whisper-status');
     const box = document.getElementById('whisper-setting-box');
-    syncForceBox();
     if (!on) {
-      if (status) status.textContent = 'Off — the model stays downloaded on this device.';
+      if (status) status.textContent = 'Cloud model — speaking questions are transcribed by the server.';
       return;
     }
     if (status) status.textContent = 'Starting download…';
     try {
       await window.duolibeeWhisper.ensureLoaded((text) => { if (status) status.textContent = text; });
-      if (status) status.textContent = 'Ready — stored on this device (~75 MB).';
+      if (status) status.textContent = 'Whisper — speaking questions are transcribed on this device (~75 MB model, stored here).';
     } catch (e) {
       state.settings.whisper = false;
-      state.settings.forceWhisper = false;
       save();
       if (box) box.checked = false;
-      syncForceBox();
       if (status) status.textContent = 'Download failed — check your connection and try again.';
     }
   }
@@ -177,27 +163,13 @@
     box.id = 'whisper-setting-box';
     box.checked = state.settings.whisper === true;
     box.onchange = () => { setWhisperEnabled(box.checked); };
-    label.append(box, document.createTextNode(' On-device transcription (Whisper)'));
+    label.append(box, document.createTextNode(' On-device Whisper for speaking (instead of the cloud model)'));
     const status = document.createElement('span');
     status.id = 'whisper-status';
     status.className = 'setting-note';
     status.textContent = whisperStatusText();
     label.append(status);
-    const forceLabel = document.createElement('label');
-    forceLabel.className = 'setting-row';
-    forceLabel.id = 'force-whisper-setting';
-    const forceBox = document.createElement('input');
-    forceBox.type = 'checkbox';
-    forceBox.id = 'force-whisper-setting-box';
-    forceBox.checked = state.settings.forceWhisper === true;
-    forceBox.disabled = state.settings.whisper !== true;
-    forceBox.onchange = () => { state.settings.forceWhisper = forceBox.checked; save(); };
-    forceLabel.append(forceBox, document.createTextNode(' Always use Whisper for speaking'));
-    const forceNote = document.createElement('span');
-    forceNote.className = 'setting-note';
-    forceNote.textContent = 'Skips browser recognition and the server — every speaking question is transcribed on this device.';
-    forceLabel.append(forceNote);
     const card = app.querySelector('.card');
-    if (card) { card.append(label); card.append(forceLabel); }
+    if (card) { card.append(label); }
   };
 })();

@@ -661,11 +661,12 @@ for (const f of order) {
   assert.strictEqual(laterAfter.correctAfter, laterAfter.correctBefore + 1, 'a correctly transcribed word should grade correct on Check');
   assert.strictEqual(laterAfter.answered, true, 'Check should mark the exercise answered');
 
-  // H. Server transcription fails, Whisper (switched on) transcribes the
-  // same recording on the device instead.
+  // H. Whisper mode: the recording goes only to the on-device model —
+  // the server is never asked, even when it would fail.
   vm.runInContext(`
     window.__whisperTranscript = null;
     window.__whisperAudioLen = null;
+    window.__serverCalls = 0;
     window.__realWhisper = window.duolibeeWhisper;
     window.duolibeeWhisper = {
       ensureLoaded: async () => {},
@@ -682,7 +683,7 @@ for (const f of order) {
   const fetchBeforeWhisper = sandbox.fetch;
   sandbox.fetch = async (url, options) => {
     const u = String(url && url.url ? url.url : url);
-    if (u.includes('/transcribe')) return { ok: false, status: 502, json: async () => ({}) };
+    if (u.includes('/transcribe')) { sandbox.__serverCalls++; return { ok: false, status: 502, json: async () => ({}) }; }
     return fetchBeforeWhisper(url, options);
   };
   const whisperTest = vm.runInContext(`
@@ -698,17 +699,18 @@ for (const f of order) {
   await sleep(120);
   const whisperAfter = vm.runInContext(`
     (function () {
-      return { type: session.exercises[index].type, heard: session.speakHeard, audioLen: window.__whisperAudioLen };
+      return { type: session.exercises[index].type, heard: session.speakHeard, audioLen: window.__whisperAudioLen, serverCalls: window.__serverCalls };
     })()
   `, sandbox);
   sandbox.fetch = fetchBeforeWhisper;
-  console.log('whisper fallback after server failure:', JSON.stringify(whisperAfter));
+  console.log('whisper mode transcribes on device:', JSON.stringify(whisperAfter));
   assert.strictEqual(whisperAfter.type, 'speak', 'a Whisper transcription must keep the exercise');
-  assert.strictEqual(whisperAfter.heard, whisperTest.item, 'Whisper should hear the word when the server fails');
+  assert.strictEqual(whisperAfter.heard, whisperTest.item, 'Whisper should hear the word');
   assert.strictEqual(whisperAfter.audioLen, 1, 'the recording should be resampled to 16 kHz before Whisper (3 samples at 48 kHz -> 1)');
+  assert.strictEqual(whisperAfter.serverCalls, 0, 'Whisper mode must never call the server');
 
-  // I. Server and Whisper both fail: the exercise becomes a written
-  // question, with an explanation and no penalty.
+  // I. Whisper mode, and Whisper cannot transcribe: the exercise becomes
+  // a written question, with an explanation and no penalty.
   vm.runInContext(`
     window.__whisperTranscript = '';
     window.__notes = [];
@@ -735,8 +737,8 @@ for (const f of order) {
     })()
   `, sandbox);
   sandbox.fetch = fetchBeforeBothFail;
-  console.log('server and whisper both fail:', JSON.stringify(bothFailAfter));
-  assert.strictEqual(bothFailAfter.type, 'choice', 'when every transcription path fails the exercise must become a written question');
+  console.log('whisper cannot transcribe:', JSON.stringify(bothFailAfter));
+  assert.strictEqual(bothFailAfter.type, 'choice', 'when the chosen transcription path fails the exercise must become a written question');
   assert.ok(bothFailAfter.notes.some((n) => /Couldn.t check what you said/.test(n)), 'the swap must explain why, got: ' + JSON.stringify(bothFailAfter.notes));
   vm.runInContext(`
     window.duolibeeWhisper = window.__realWhisper;
@@ -764,7 +766,7 @@ for (const f of order) {
   console.log('whisper toggle on:', JSON.stringify(toggleOn));
   assert.strictEqual(toggleOn.setting, true, 'enabling Whisper must save the setting');
   assert.strictEqual(toggleOn.calls, 1, 'enabling Whisper must trigger the model download');
-  assert.ok(/Ready/.test(toggleOn.status), 'a loaded model should report Ready, got: ' + toggleOn.status);
+  assert.ok(/Whisper/.test(toggleOn.status), 'a loaded model should report Whisper mode, got: ' + toggleOn.status);
   vm.runInContext(`
     window.duolibeeWhisper = {
       ensureLoaded: async () => { throw new Error('no network'); },
@@ -793,8 +795,9 @@ for (const f of order) {
   assert.ok(!workerSrc.includes('whisper-tiny'), 'the Whisper worker must not reference whisper-tiny');
   assert.ok(/75 MB/.test(toggleOn.status), 'the Whisper status should name the base model size, got: ' + toggleOn.status);
 
-  // K. Force Whisper: the server is never asked — the same recording goes
-  // straight to the on-device model, even when the server would answer.
+  // K. Whisper mode is exclusive: the server is never asked — the same
+  // recording goes straight to the on-device model, even when the server
+  // would answer. This is the toggle: one path, never both at once.
   vm.runInContext(`
     window.__whisperTranscript = null;
     window.__whisperCalls = 0;
@@ -806,7 +809,6 @@ for (const f of order) {
       status: 'ready',
     };
     state.settings.whisper = true;
-    state.settings.forceWhisper = true;
   `, sandbox);
   const fetchBeforeForce = sandbox.fetch;
   sandbox.fetch = async (url, options) => {
@@ -820,9 +822,9 @@ for (const f of order) {
       const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       window.__whisperTranscript = session.exercises[idx].item.t;
       index = idx; renderExercise();
-      const forced = window.duolibeeSpeaking.whisperForced();
+      const useWhisper = window.duolibeeSpeaking.useWhisper();
       startSpeaking();
-      return { idx, item: session.exercises[idx].item.t, forced };
+      return { idx, item: session.exercises[idx].item.t, useWhisper };
     })()
   `, sandbox);
   await sleep(120);
@@ -832,70 +834,47 @@ for (const f of order) {
     })()
   `, sandbox);
   sandbox.fetch = fetchBeforeForce;
-  console.log('force whisper:', JSON.stringify(forceAfter));
-  assert.strictEqual(forceTest.forced, true, 'forceWhisper with Whisper on must report forced');
-  assert.strictEqual(forceAfter.type, 'speak', 'forced Whisper must keep the exercise');
-  assert.strictEqual(forceAfter.heard, forceTest.item, 'forced Whisper must hear the word');
-  assert.strictEqual(forceAfter.serverCalls, 0, 'forced Whisper must never call the server');
-  assert.strictEqual(forceAfter.whisperCalls, 1, 'forced Whisper must call the model exactly once');
+  console.log('whisper mode, server would answer:', JSON.stringify(forceAfter));
+  assert.strictEqual(forceTest.useWhisper, true, 'Whisper on with the model present must report Whisper mode');
+  assert.strictEqual(forceAfter.type, 'speak', 'Whisper mode must keep the exercise');
+  assert.strictEqual(forceAfter.heard, forceTest.item, 'Whisper mode must hear the word');
+  assert.strictEqual(forceAfter.serverCalls, 0, 'Whisper mode must never call the server');
+  assert.strictEqual(forceAfter.whisperCalls, 1, 'Whisper mode must call the model exactly once');
 
-  // Forcing is only active when both settings are on and the model
-  // object exists; turning Whisper off clears the force flag and
-  // disables its checkbox.
-  const forcedStates = vm.runInContext(`
+  // useWhisper is only true when the setting is on and the model object
+  // exists; Whisper off, or no model object, means the cloud model.
+  const whisperStates = vm.runInContext(`
     (function () {
       const out = {};
-      state.settings.forceWhisper = true; state.settings.whisper = true;
-      out.bothOn = window.duolibeeSpeaking.whisperForced();
+      const real = window.duolibeeWhisper;
+      state.settings.whisper = true;
+      out.on = window.duolibeeSpeaking.useWhisper();
       state.settings.whisper = false;
-      out.whisperOff = window.duolibeeSpeaking.whisperForced();
-      state.settings.whisper = true; state.settings.forceWhisper = false;
-      out.forceOff = window.duolibeeSpeaking.whisperForced();
+      out.off = window.duolibeeSpeaking.useWhisper();
+      state.settings.whisper = true;
+      window.duolibeeWhisper = undefined;
+      out.noModel = window.duolibeeSpeaking.useWhisper();
+      window.duolibeeWhisper = real;
       return out;
     })()
   `, sandbox);
-  assert.strictEqual(forcedStates.bothOn, true, 'both settings on must force');
-  assert.strictEqual(forcedStates.whisperOff, false, 'Whisper off must not force');
-  assert.strictEqual(forcedStates.forceOff, false, 'force off must not force');
-  vm.runInContext(`
-    state.settings.whisper = true;
-    state.settings.forceWhisper = true;
-    // The recognition tests stubbed app.querySelector to capture swap
-    // notes; restore the real one for this render, then put the stub
-    // back so the later swap tests still capture their notes. The
-    // harness getElementById always returns an element, so the whisper
-    // wrapper's "already built" guard would always fire — return null
-    // for the whisper ids just for this render.
-    delete app.querySelector;
-    const realGetById = document.getElementById;
-    document.getElementById = (id) => (id === 'whisper-setting' || id === 'force-whisper-setting' ? null : realGetById(id));
-    renderSettings();
-    document.getElementById = realGetById;
-    app.querySelector = () => ({ prepend: (p) => { window.__notes = window.__notes || []; window.__notes.push(p.textContent); }, append: () => {} });
-  `, sandbox);
-  const forceBoxOn = vm.runInContext(`
-    (function () {
-      const box = document.getElementById('force-whisper-setting-box');
-      return box ? { checked: box.checked, disabled: box.disabled } : null;
-    })()
-  `, sandbox);
-  assert.ok(forceBoxOn, 'the force-Whisper checkbox must exist in Settings');
-  assert.strictEqual(forceBoxOn.checked, true, 'the force checkbox must reflect the setting');
-  assert.strictEqual(forceBoxOn.disabled, false, 'the force checkbox must be usable while Whisper is on');
-  await vm.runInContext('setWhisperEnabled(false)', sandbox);
-  const forceBoxOff = vm.runInContext(`
-    (function () {
-      const box = document.getElementById('force-whisper-setting-box');
-      return { setting: state.settings.forceWhisper, checked: box ? box.checked : null, disabled: box ? box.disabled : null };
-    })()
-  `, sandbox);
-  assert.strictEqual(forceBoxOff.setting, false, 'turning Whisper off must clear the force setting');
-  assert.strictEqual(forceBoxOff.checked, false, 'turning Whisper off must uncheck the force box');
-  assert.strictEqual(forceBoxOff.disabled, true, 'turning Whisper off must disable the force box');
+  assert.strictEqual(whisperStates.on, true, 'Whisper on with the model must use Whisper');
+  assert.strictEqual(whisperStates.off, false, 'Whisper off must use the cloud model');
+  assert.strictEqual(whisperStates.noModel, false, 'Whisper on without the model object must fall back to the cloud model');
+
+  // Settings shows one Whisper toggle, and no "Always use Whisper"
+  // checkbox — the force option is gone from the source entirely.
+  const whisperSrc = fs.readFileSync(path.join(REPO, 'whisper.js'), 'utf8');
+  assert.ok(whisperSrc.includes("whisper-setting-box"), 'whisper.js must still build the Whisper toggle');
+  assert.ok(!whisperSrc.includes('force-whisper-setting'), 'whisper.js must not create the force checkbox');
+  assert.ok(!whisperSrc.includes('forceWhisper'), 'whisper.js must not reference forceWhisper');
+  const speakingSrc = fs.readFileSync(path.join(REPO, 'speaking.js'), 'utf8');
+  assert.ok(!speakingSrc.includes('transcribeInParallel'), 'speaking.js must not run the parallel path');
+  assert.ok(!speakingSrc.includes('whisperForced'), 'speaking.js must not have a force path');
+  assert.ok(speakingSrc.includes('useWhisper'), 'speaking.js must pick one path by the toggle');
   vm.runInContext(`
     window.duolibeeWhisper = window.__realWhisper3;
     delete state.settings.whisper;
-    delete state.settings.forceWhisper;
   `, sandbox);
 
   // L. Speaking switched off in Settings still swaps speak exercises at
@@ -962,50 +941,28 @@ for (const f of order) {
   console.log('sentence translate answered:', JSON.stringify(sentenceAnswered));
   assert.strictEqual(sentenceAnswered.correct, 1, 'typing the sentence must grade correct');
 
-  // N. Parallel transcription: server and Whisper run at once; the more
-  // correct transcript wins. Server wrong + Whisper right -> Whisper wins,
-  // and vice versa; when both are wrong, the closer guess is shown.
+  // N. Cloud mode is exclusive too: Whisper is never asked — the
+  // recording goes only to the server, even when the model is present.
   vm.runInContext(`
-    state.settings.forceWhisper = false;
-    state.settings.whisper = true;
+    state.settings.whisper = false;
     window.__serverTranscript = null;
-    window.__whisperTranscript = null;
-    window.__parallelServerCalls = 0;
-    window.__parallelWhisperCalls = 0;
+    window.__cloudServerCalls = 0;
+    window.__cloudWhisperCalls = 0;
     window.duolibeeWhisper = {
       ensureLoaded: async () => {},
-      transcribe: async (audio) => { window.__parallelWhisperCalls++; return window.__whisperTranscript || ''; },
+      transcribe: async (audio) => { window.__cloudWhisperCalls++; return window.__whisperTranscript || ''; },
       status: 'ready',
     };
   `, sandbox);
-  const fetchBeforeParallel = sandbox.fetch;
+  const fetchBeforeCloud = sandbox.fetch;
   sandbox.fetch = async (url, options) => {
     const u = String(url && url.url ? url.url : url);
-    if (u.includes('/transcribe')) { sandbox.__parallelServerCalls++; return { ok: true, status: 200, json: async () => ({ transcript: sandbox.__serverTranscript || '' }) }; }
-    return fetchBeforeParallel(url, options);
+    if (u.includes('/transcribe')) { sandbox.__cloudServerCalls++; return { ok: true, status: 200, json: async () => ({ transcript: sandbox.__serverTranscript || '' }) }; }
+    return fetchBeforeCloud(url, options);
   };
-  const par1 = vm.runInContext(`
+  const cloudTest = vm.runInContext(`
     (function () {
       session = LESSONS.find(l => l.id === 16); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
-      const target = session.exercises[idx].item.t;
-      window.__serverTranscript = 'zzz wrong';
-      window.__whisperTranscript = target;
-      window.__parallelServerCalls = 0; window.__parallelWhisperCalls = 0;
-      index = idx; renderExercise();
-      startSpeaking();
-      return { idx, target };
-    })()
-  `, sandbox);
-  await sleep(200);
-  const par1After = vm.runInContext(`({ heard: session.speakHeard, serverCalls: window.__parallelServerCalls, whisperCalls: window.__parallelWhisperCalls })`, sandbox);
-  console.log('parallel, server wrong + Whisper right:', JSON.stringify(par1After));
-  assert.strictEqual(par1After.heard, par1.target, 'Whisper should win when the server is wrong');
-  assert.strictEqual(par1After.serverCalls, 1, 'the server must be asked in the parallel path');
-  assert.strictEqual(par1After.whisperCalls, 1, 'Whisper must be asked in the parallel path');
-  const par2 = vm.runInContext(`
-    (function () {
-      session = LESSONS.find(l => l.id === 17); index = 0; correct = 0; delete session._answeredIndex;
       const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
       const target = session.exercises[idx].item.t;
       window.__serverTranscript = target;
@@ -1016,62 +973,12 @@ for (const f of order) {
     })()
   `, sandbox);
   await sleep(200);
-  const par2After = vm.runInContext(`({ heard: session.speakHeard })`, sandbox);
-  console.log('parallel, server right + Whisper wrong:', JSON.stringify(par2After));
-  assert.strictEqual(par2After.heard, par2.target, 'the server should win when Whisper is wrong');
-  const par3 = vm.runInContext(`
-    (function () {
-      session = LESSONS.find(l => l.id === 18); index = 0; correct = 0; delete session._answeredIndex;
-      const idx = session.exercises.findIndex(e => e.type === 'speak' && !e.sentence);
-      const target = session.exercises[idx].item.t;
-      // Both wrong; the server's near-miss is closer than Whisper's noise.
-      window.__serverTranscript = target.slice(0, Math.max(1, target.length - 2));
-      window.__whisperTranscript = 'zzz';
-      index = idx; renderExercise();
-      startSpeaking();
-      return { idx, target, nearMiss: window.__serverTranscript };
-    })()
-  `, sandbox);
-  await sleep(200);
-  const par3After = vm.runInContext(`({ heard: session.speakHeard, type: session.exercises[index].type })`, sandbox);
-  sandbox.fetch = fetchBeforeParallel;
-  console.log('parallel, both wrong:', JSON.stringify(par3After));
-  assert.strictEqual(par3After.heard, par3.nearMiss, 'the closer transcript should be shown when both are wrong');
-  assert.strictEqual(par3After.type, 'speak', 'a non-empty transcript must keep the exercise');
-
-  // P. Fast path: when the server returns an accepted transcript, the
-  // parallel path must return it at once instead of waiting for the slow
-  // on-device Whisper (several seconds for whisper-base on a phone).
-  // Whisper is slow here (1 s) but the server is right, so the answer
-  // must arrive well before Whisper finishes.
-  const fetchBeforeFast = sandbox.fetch;
-  sandbox.fetch = async (url, options) => {
-    const u = String(url && url.url ? url.url : url);
-    if (u.includes('/transcribe')) return { ok: true, status: 200, json: async () => ({ transcript: sandbox.__serverTranscript || '' }) };
-    return fetchBeforeFast(url, options);
-  };
-  sandbox.__serverTranscript = 'Kumusta';
-  sandbox.__whisperTranscript = 'zzz wrong';
-  vm.runInContext(`
-    window.__whisperResolved = false;
-    window.duolibeeWhisper.transcribe = async () => {
-      await new Promise(r => setTimeout(r, 1000));
-      window.__whisperResolved = true;
-      return window.__whisperTranscript;
-    };
-  `, sandbox);
-  const fastStart = Date.now();
-  const fastText = await vm.runInContext(
-    `window.duolibeeSpeaking.transcribeInParallel(new Blob(['fake-audio'], { type: 'audio/mp4' }), { item: { t: 'Kumusta' } })`,
-    sandbox
-  );
-  const fastMs = Date.now() - fastStart;
-  const fastWhisperResolved = vm.runInContext(`window.__whisperResolved`, sandbox);
-  sandbox.fetch = fetchBeforeFast;
-  console.log('parallel fast path:', JSON.stringify({ text: fastText, ms: fastMs, whisperResolved: fastWhisperResolved }));
-  assert.strictEqual(fastText, 'Kumusta', 'the accepted server transcript must win at once');
-  assert.ok(fastMs < 500, 'the fast path must return well before slow Whisper finishes, took ' + fastMs + 'ms');
-  assert.strictEqual(fastWhisperResolved, false, 'the fast path must not wait for Whisper');
+  const cloudAfter = vm.runInContext(`({ heard: session.speakHeard, serverCalls: window.__cloudServerCalls, whisperCalls: window.__cloudWhisperCalls })`, sandbox);
+  sandbox.fetch = fetchBeforeCloud;
+  console.log('cloud mode, model present:', JSON.stringify(cloudAfter));
+  assert.strictEqual(cloudAfter.heard, cloudTest.target, 'cloud mode must hear the server transcript');
+  assert.strictEqual(cloudAfter.serverCalls, 1, 'cloud mode must call the server exactly once');
+  assert.strictEqual(cloudAfter.whisperCalls, 0, 'cloud mode must never call Whisper');
 
   // O. Silence detection: speech, then a second of quiet, stops the
   // recording early — well before the 8 s cap — and the clipped recording
@@ -1109,7 +1016,6 @@ for (const f of order) {
     };
     navigator.mediaDevices = { getUserMedia: () => Promise.resolve({ getTracks: () => [] }) };
     state.settings.whisper = false;
-    state.settings.forceWhisper = false;
   `, sandbox);
   const fetchBeforeSilence = sandbox.fetch;
   sandbox.fetch = async (url, options) => {
