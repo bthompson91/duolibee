@@ -154,7 +154,16 @@
   }
   let activeAudio = null;
   function stopAudioFile() {
-    try { if (activeAudio) { activeAudio.pause(); activeAudio = null; } } catch (e) { activeAudio = null; }
+    try {
+      if (activeAudio) {
+        activeAudio.pause();
+        activeAudio = null;
+        // Pausing never fires onended, so end the duck here — otherwise
+        // the lesson music stays ducked until the 15s safety net in
+        // lesson-music.js clears it.
+        hook('duolibeeSpeechEnd');
+      }
+    } catch (e) { activeAudio = null; }
   }
   // One shared <audio> element for every recorded clip. A new Audio() per
   // clip makes the browser (notably iOS Safari) set up and tear down a

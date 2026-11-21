@@ -60,6 +60,15 @@ const bodyEl = new El('body');
 // every master-gain target, so the loop and the ducking can be asserted.
 const musicLog = { oscs: [], gains: [], buffers: 0 };
 let mockTime = 0;
+// Controllable clock: lesson-music.js uses Date.now() for the speech
+// lease, so the test can fast-forward past it.
+let mockNow = 1000000;
+const RealDate = Date;
+function MockDate(...args) { return new RealDate(...args); }
+MockDate.now = () => mockNow;
+MockDate.parse = RealDate.parse;
+MockDate.UTC = RealDate.UTC;
+MockDate.prototype = RealDate.prototype;
 class MockParam {
   constructor() { this.value = 0; this.events = []; }
   setValueAtTime(v) { this.value = v; this.events.push(['set', v]); }
@@ -102,7 +111,7 @@ const origCreateGain = MockAudioContext.prototype.createGain;
 const sandbox = {
   console, setTimeout, clearTimeout, setInterval, clearInterval,
   URL, URLSearchParams, Blob,
-  Math, JSON, Object, Array, Promise, Error, RegExp, Date,
+  Math, JSON, Object, Array, Promise, Error, RegExp, Date: MockDate,
   document: {
     getElementById: (id) => (id === 'app' ? appEl : getEl(id)),
     createElement: (tag) => new El(tag),
@@ -243,6 +252,23 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.02, 'speech playback must duck the music');
   vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'speech end must restore the music');
+
+  // A lost speech-end event must not leave the music ducked forever.
+  // iOS often never fires the utterance onend, and pausing a clip never
+  // fires onended, so if the end hook is lost the music must recover
+  // on its own once the clip could not still be playing.
+  vm.runInContext('window.duolibeeSpeechStart()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.02, 'speech start must duck the music');
+  // No SpeechEnd call: the end event is lost. Fast-forward past the
+  // 15s lease and the music must come back up on its own.
+  mockNow += 16000;
+  vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'a stale speech duck must clear after the lease so the music comes back up');
+  // And a fresh clip still ducks (the lease only clears stale state).
+  vm.runInContext('window.duolibeeSpeechStart()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.02, 'a new clip must duck again');
+  vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'speech end must restore the music after the lease test');
 
   // The global mute silences the music, and unmuting restores it.
   vm.runInContext('state.settings.muted = true; window.duolibeeMusic.updateMusic()', sandbox);

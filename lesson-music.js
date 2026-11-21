@@ -65,6 +65,7 @@
   let nextStep = 0;
   let nextTime = 0;
   let speechPlaying = false;
+  let speechSince = 0; // when the current clip started (Date.now)
   // Set when an exercise is on screen, cleared when the learner
   // navigates away. session/index alone cannot tell "in a lesson"
   // from "went home mid-lesson", because go('home') leaves them set.
@@ -86,6 +87,15 @@
     } catch (_) { return null; }
   }
   function shouldDuck() {
+    // Safety net: a lost speech-end event must not leave the music
+    // ducked forever. iOS often never fires the utterance onend, and
+    // pausing a clip never fires onended, so if speech has been
+    // "playing" for longer than any pronunciation clip can run, it is
+    // stale — clear it and let the music come back up.
+    if (speechPlaying && speechSince && Date.now() - speechSince > 15000) {
+      speechPlaying = false;
+      speechSince = 0;
+    }
     if (speechPlaying) return true;
     const t = currentExerciseType();
     return t === 'audio' || t === 'speak';
@@ -274,8 +284,8 @@
 
   // Duck while a pronunciation clip or the system voice is playing;
   // answer-speech.js calls these through its hook().
-  window.duolibeeSpeechStart = function () { speechPlaying = true; applyGain(); };
-  window.duolibeeSpeechEnd = function () { speechPlaying = false; applyGain(); };
+  window.duolibeeSpeechStart = function () { speechPlaying = true; speechSince = Date.now(); applyGain(); };
+  window.duolibeeSpeechEnd = function () { speechPlaying = false; speechSince = 0; applyGain(); };
 
   function setMusicEnabled(on) {
     state.settings.music = !!on;
