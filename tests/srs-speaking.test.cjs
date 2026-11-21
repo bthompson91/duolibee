@@ -417,8 +417,8 @@ for (const f of order) {
   // ---- Reverse must reject the Tagalog word itself ----
   // A reverse question shows the Tagalog and asks for the English, so
   // typing the prompt word back must fail. (Brendan reported "kalsada"
-  // passing for "Translate: kalsada" — the correct answer is "street".)
-  // Lesson 34's reverse is items[4] = kalsada -> street.
+  // passing for "Translate to English: kalsada" — the correct answer is
+  // "street".) Lesson 34's reverse is items[4] = kalsada -> street.
   const reverseTagalog = vm.runInContext(`
     (function () {
       for (let i = 1; i < 34; i++) state.completed[i] = { last: Date.now() };
@@ -441,10 +441,46 @@ for (const f of order) {
   `, sandbox);
   console.log('reverse Tagalog word:', JSON.stringify(reverseTagalog));
   assert.strictEqual(reverseTagalog.found, true, 'lesson 34 must have a reverse exercise for kalsada');
-  assert.strictEqual(reverseTagalog.prompt, 'Translate: kalsada', 'the reverse prompt must show the Tagalog word');
+  assert.strictEqual(reverseTagalog.prompt, 'Translate to English: kalsada', 'the reverse prompt must show the Tagalog word');
   assert.strictEqual(reverseTagalog.correctAfter, reverseTagalog.correctBefore, 'typing the Tagalog word for a reverse question must not count as correct');
   assert.ok(reverseTagalog.fbClass && reverseTagalog.fbClass.includes('bad'), 'typing the Tagalog word for a reverse question must be marked wrong');
   assert.ok(reverseTagalog.fbText && reverseTagalog.fbText.includes('Correct answer: street'), 'the feedback must show the English answer');
+
+  // ---- Reverse must accept the correct English (Brendan's Lesson 35 case) ----
+  // "Translate to English: eskwelahan" with "school" typed was marked
+  // wrong with "Correct answer: eskwelahan" — the reverse was graded as
+  // if it were a translate question. The typed-answer handler is now a
+  // single function that dispatches on the exercise type, so the button
+  // cannot invoke the wrong grader.
+  const reverseEnglish = vm.runInContext(`
+    (function () {
+      for (let i = 1; i < 35; i++) state.completed[i] = { last: Date.now() };
+      startLesson(35);
+      const idx = session.exercises.findIndex((e) => e.type === 'reverse' && e.item && e.item.t === 'eskwelahan');
+      if (idx < 0) return { found: false };
+      index = idx;
+      renderExercise();
+      const ex = session.exercises[index];
+      const html = app.innerHTML;
+      const btn = (html.match(/onclick='(answer\\w+\\(\\))'/) || [])[1] || '';
+      const before = correct;
+      document.getElementById('answer').value = 'school'; // the correct English
+      eval(btn); // click the Check button the page actually renders
+      const fb = document.getElementById('feedback');
+      return {
+        found: true, prompt: ex.prompt, itemT: ex.item.t, itemE: ex.item.e, button: btn,
+        correctBefore: before, correctAfter: correct,
+        fbClass: fb && fb.className, fbText: fb && fb.textContent,
+      };
+    })()
+  `, sandbox);
+  console.log('reverse correct English via button:', JSON.stringify(reverseEnglish));
+  assert.strictEqual(reverseEnglish.found, true, 'lesson 35 must have a reverse exercise for eskwelahan');
+  assert.strictEqual(reverseEnglish.prompt, 'Translate to English: eskwelahan', 'the reverse prompt must show the Tagalog word');
+  assert.strictEqual(reverseEnglish.button, 'answerTyped()', 'the typed-answer button must call the single typed-answer handler');
+  assert.strictEqual(reverseEnglish.correctAfter, reverseEnglish.correctBefore + 1, 'typing the correct English for a reverse question must count as correct');
+  assert.ok(reverseEnglish.fbClass && reverseEnglish.fbClass.includes('good'), 'typing the correct English for a reverse question must be marked right');
+  assert.ok(reverseEnglish.fbText && /Tama! Correct!/.test(reverseEnglish.fbText), 'the feedback must say correct');
 
   // ---- Speaking fallback: unsupported browser swaps to a written question ----
   const fallback = vm.runInContext(`
@@ -993,7 +1029,7 @@ for (const f of order) {
   sandbox.fetch = fetchBeforeSentenceFail;
   console.log('sentence speak, transcription fails:', JSON.stringify(sentenceFailAfter));
   assert.strictEqual(sentenceFailAfter.type, 'translate', 'a failed sentence speak must become a translate question');
-  assert.strictEqual(sentenceFailAfter.prompt, 'Translate: ' + sentenceFail.english, 'the translate prompt shows the English sentence');
+  assert.strictEqual(sentenceFailAfter.prompt, 'Translate to Tagalog: ' + sentenceFail.english, 'the translate prompt shows the English sentence');
   assert.strictEqual(sentenceFailAfter.itemT, sentenceFail.sentence, 'the translate answer is the sentence');
   assert.strictEqual(sentenceFailAfter.origin, sentenceFail.idx, 'the fallback keeps the sentence speak origin');
   assert.ok(sentenceFailAfter.notes.some((n) => /Couldn.t check what you said/.test(n)), 'the swap must explain why, got: ' + JSON.stringify(sentenceFailAfter.notes));

@@ -18,7 +18,7 @@
           const seed=id*100+ei;
           const choice=(it,prompt)=>{const options=seededShuffle([...new Set([it.e,...distractors(it)])],seed);return{type:'choice',prompt,options,answer:options.indexOf(it.e)};};
           if(type==='choice')return choice(items[0],'What does “'+items[0].t+'” mean?');
-          if(type==='translate')return{type,prompt:'Translate: '+items[1].e,item:items[1]};
+          if(type==='translate')return{type,prompt:'Translate to Tagalog: '+items[1].e,item:items[1]};
           if(type==='match')return{type,pairs:items.map(it=>({t:it.t,e:it.e}))};
           if(type==='build')return items[2].s?{type,prompt:'Build: '+items[2].se,words:items[2].s.split(' '),answer:items[2].s,seed}:choice(items[2],'Choose the English for “'+items[2].t+'”');
           if(type==='speak')return{type:'speak',prompt:'Say this aloud: '+items[3].t,item:items[3]};

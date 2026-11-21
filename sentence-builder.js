@@ -76,7 +76,7 @@
       // sibling exercise so the second pass follows the first; if the sibling
       // was converted to the build, the extra goes at the end.
       const extraDefs = [];
-      if (items[4]) extraDefs.push([(e) => e.type === 'translate', { type: 'reverse', prompt: 'Translate: ' + items[4].t, item: items[4], srsKeys: [keyOf(items[4])] }]);
+      if (items[4]) extraDefs.push([(e) => e.type === 'translate', { type: 'reverse', prompt: 'Translate to English: ' + items[4].t, item: items[4], srsKeys: [keyOf(items[4])] }]);
       if (items[4]) {
         const audioOpts = seededShuffle([items[4].e, ...distractors(items[4])], lesson.id * 977 + 41);
         extraDefs.push([(e) => e.type === 'audio', { type: 'audio', item: items[4], options: audioOpts, srsKeys: [keyOf(items[4])] }]);

@@ -114,7 +114,7 @@
   function writtenQuestionFor(ex) {
     // A sentence speak falls back to typing the sentence: a choice would
     // give the long English sentence away among single-word distractors.
-    if (ex.sentence) return { type: 'translate', prompt: 'Translate: ' + ex.item.e, item: ex.item, srsKeys: ex.srsKeys, _origin: ex._origin, _retry: ex._retry, speaker: ex.speaker || null };
+    if (ex.sentence) return { type: 'translate', prompt: 'Translate to Tagalog: ' + ex.item.e, item: ex.item, srsKeys: ex.srsKeys, _origin: ex._origin, _retry: ex._retry, speaker: ex.speaker || null };
     const options = seededShuffle([...new Set([ex.item.e, ...distractors(ex.item)])], index + 201);
     // Keep the exercise's identity: lesson-retries.js credits mastery by
     // _origin, so a replacement without it can never be credited and the
