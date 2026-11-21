@@ -1,12 +1,11 @@
-// Lesson music test: the study-beat loop starts with a lesson, ducks for
-// listening/speaking and while speech plays, respects mute and the
-// Settings toggle, and stops on home. Each lesson plays its host
-// character's style (lumpy OPM lofi, tito-bong Arena rock, ate-crystal
-// Pop punk, jetjet Brainrot hyperpop, lola-joli Folk rondalla,
-// tita-baby Love ballad); a session with no host (review) falls back to
-// OPM lofi. Settings also has a Character music preview: each
-// character's style can be heard without starting a lesson. The Web
-// Audio API is mocked so the scheduled notes and gains can be
+// Lesson music test: each lesson plays its host character's track
+// (an MP3 in assets/music/), looped, and it ducks for listening /
+// speaking and while speech plays, respects mute and the Settings
+// toggle, and stops on home. A session with no host (review) falls
+// back to Lumpy's track. Settings also has a Character music preview:
+// each character's track can be heard without starting a lesson. If
+// a track fails to load, the lesson goes on silently. The <audio>
+// element is mocked so src, loop, volume and play/pause can be
 // asserted. Run from the repo root:
 // node <this file>
 const fs = require('fs');
@@ -62,10 +61,37 @@ function getEl(id) {
 const appEl = new El('main'); appEl.id = 'app';
 const bodyEl = new El('body');
 
-// Mock Web Audio: records every oscillator start (type + frequency) and
-// every master-gain target, so the loop and the ducking can be asserted.
-const musicLog = { oscs: [], gains: [], buffers: 0 };
-let mockTime = 0;
+// Mock <audio>: records src, volume, loop and play/pause, so file
+// playback can be asserted. answer-speech.js also uses new Audio()
+// for its shared clip element, so the mock must support the
+// properties it touches (playbackRate, onplaying, onended, onerror).
+class MockAudio {
+  constructor() {
+    this._src = '';
+    this.volume = 0;
+    this.loop = false;
+    this.preload = '';
+    this.playbackRate = 1;
+    this.currentTime = 0;
+    this.paused = true;
+    this.playCalls = 0;
+    this.pauseCalls = 0;
+    this.onplaying = null;
+    this.onended = null;
+    this.onerror = null;
+    this._listeners = {};
+  }
+  set src(v) { this._src = String(v); }
+  get src() { return this._src; }
+  play() { this.playCalls++; this.paused = false; return Promise.resolve(); }
+  pause() { this.pauseCalls++; this.paused = true; }
+  addEventListener(type, fn) { (this._listeners[type] = this._listeners[type] || []).push(fn); }
+  removeEventListener() {}
+  _fire(type) {
+    (this._listeners[type] || []).forEach((fn) => { try { fn({ type }); } catch (e) {} });
+    if (type === 'error' && typeof this.onerror === 'function') { try { this.onerror({ type }); } catch (e) {} }
+  }
+}
 // Controllable clock: lesson-music.js uses Date.now() for the speech
 // lease, so the test can fast-forward past it.
 let mockNow = 1000000;
@@ -85,9 +111,7 @@ class MockParam {
 class MockNode {
   constructor(kind) { this.kind = kind; this.frequency = new MockParam(); this.gain = new MockParam(); this.Q = new MockParam(); this.type = ''; this.buffer = null; this.loop = false; }
   connect() { return this; }
-  start() {
-    if (this.kind === 'osc') musicLog.oscs.push({ type: this.type, freq: this.frequency.value });
-  }
+  start() {}
   stop() {}
   close() {}
 }
@@ -96,23 +120,18 @@ class MockAudioContext {
     this.sampleRate = 44100;
     this.state = 'running';
     this.destination = new MockNode('dest');
-    this._master = null;
   }
-  get currentTime() { return mockTime; }
+  get currentTime() { return 0; }
   resume() { return Promise.resolve(); }
-  createGain() { const g = new MockNode('gain'); return g; }
+  createGain() { return new MockNode('gain'); }
   createOscillator() { return new MockNode('osc'); }
   createBiquadFilter() { return new MockNode('filter'); }
   createBufferSource() { return new MockNode('src'); }
   createBuffer(channels, len) {
-    musicLog.buffers++;
     return { getChannelData: () => new Float32Array(len), length: len, numberOfChannels: channels };
   }
   close() { return Promise.resolve(); }
 }
-// Tag the master gain so the test can read its target: lesson-music.js
-// connects it to ctx.destination, so capture it there.
-const origCreateGain = MockAudioContext.prototype.createGain;
 
 const sandbox = {
   console, setTimeout, clearTimeout, setInterval, clearInterval,
@@ -148,6 +167,7 @@ const sandbox = {
   scrollTo: () => {}, scroll: () => {},
   AudioContext: MockAudioContext,
   webkitAudioContext: MockAudioContext,
+  Audio: MockAudio,
   fetch: async (url) => {
     const u = String(url && url.url ? url.url : url);
     if (u.includes('lessons.json')) return { ok: true, status: 200, json: async () => lessonsData };
@@ -156,7 +176,6 @@ const sandbox = {
 };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
-sandbox.__musicLog = musicLog;
 vm.createContext(sandbox);
 
 const order = [
@@ -180,45 +199,54 @@ for (const f of order) {
 }
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
-function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+// The <audio> element lesson-music.js is using, or null before the
+// first lesson/preview.
+function musicEl() { return vm.runInContext('window.duolibeeMusic.audio', sandbox); }
+function musicState() {
+  return vm.runInContext(`
+    (function () {
+      const m = window.duolibeeMusic;
+      return { playing: m.playing, volume: m.volume, track: m.track, host: m.host };
+    })()
+  `, sandbox);
+}
 
 (async () => {
   for (let i = 0; i < 20 && !vm.runInContext('typeof LESSONS !== "undefined" && LESSONS.length', sandbox); i++) await sleep(50);
   assert.ok(vm.runInContext('LESSONS.length', sandbox) > 0, 'lessons must load');
   assert.ok(vm.runInContext('typeof window.duolibeeMusic !== "undefined"', sandbox), 'lesson-music.js must expose window.duolibeeMusic');
 
-  // Music is on by default (no setting stored yet).
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0, 'no lesson yet, so the gain must be 0');
+  // Music is on by default (no setting stored yet), but nothing plays
+  // before a lesson starts, and no <audio> element exists yet.
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0, 'no lesson yet, so the volume must be 0');
+  assert.strictEqual(musicEl(), null, 'no <audio> element must exist before the first lesson');
+  const tracks = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.tracks', sandbox)));
+  console.log('tracks:', JSON.stringify(tracks));
+  assert.deepStrictEqual(tracks, [
+    'assets/music/lumpy.mp3', 'assets/music/tito-bong.mp3', 'assets/music/ate-crystal.mp3',
+    'assets/music/jetjet.mp3', 'assets/music/lola-joli.mp3', 'assets/music/tita-baby.mp3',
+  ], 'there must be six tracks, one per character');
 
   // Start lesson 1. The first graded exercise is a choice (not audio /
-  // speak), so the music plays at full volume. Advance mock time so the
-  // scheduler's lookahead can fire, then let the interval tick.
+  // speak), so the track plays at full volume, looped.
   vm.runInContext('startLesson(1)', sandbox);
-  mockTime = 0.5;
-  await sleep(250);
-  // Lesson 1 is hosted by lumpy, so it plays the OPM lofi style: the
-  // chord progression is the OPM I-vi-IV-V: Cmaj7, Am7, Fmaj7, G7.
-  // (JSON round-trip: vm arrays carry the vm's Array prototype, which
-  // deepStrictEqual rejects.)
-  const chords = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.chords', sandbox)));
-  console.log('chords:', JSON.stringify(chords));
-  assert.deepStrictEqual(chords, ['Cmaj7', 'Am7', 'Fmaj7', 'G7'], 'the loop must be the OPM I-vi-IV-V');
-  const playing = vm.runInContext(`
-    (function () {
-      return { playing: window.duolibeeMusic.playing, gain: window.duolibeeMusic.gain, type: session.exercises[index].type };
-    })()
-  `, sandbox);
-  console.log('lesson started:', JSON.stringify(playing));
-  assert.strictEqual(playing.playing, true, 'music must be playing during a lesson');
-  assert.strictEqual(playing.gain, 0.12, 'a choice exercise must play at full volume, got ' + playing.gain);
-  assert.ok(musicLog.oscs.length > 0, 'the scheduler must have started oscillators, got ' + musicLog.oscs.length);
-  // The first bar is Cmaj7: the pad must include C4, E4, G4, B4.
-  const padFreqs = musicLog.oscs.filter((o) => o.type === 'triangle').map((o) => Math.round(o.freq * 100) / 100);
-  for (const m of [60, 64, 67, 71]) {
-    assert.ok(padFreqs.some((f) => Math.abs(f - freq(m)) < 0.5), 'the Cmaj7 pad must include midi ' + m + ' (' + freq(m).toFixed(2) + ' Hz), got: ' + JSON.stringify(padFreqs.slice(0, 12)));
-  }
+  await sleep(150);
+  // Lesson 1 is hosted by lumpy.
+  const lumpy = musicState();
+  console.log('lesson 1:', JSON.stringify(lumpy));
+  assert.strictEqual(lumpy.track, 'assets/music/lumpy.mp3', 'lesson 1 must load Lumpy\'s track, got ' + lumpy.track);
+  assert.strictEqual(lumpy.host, 'lumpy', 'lesson 1 must be hosted by lumpy');
+  assert.strictEqual(lumpy.playing, true, 'music must be playing during a lesson');
+  assert.strictEqual(lumpy.volume, 0.5, 'a choice exercise must play at full volume, got ' + lumpy.volume);
+  const el = musicEl();
+  assert.ok(el, 'an <audio> element must exist once a lesson starts');
+  assert.strictEqual(el.src, 'assets/music/lumpy.mp3', 'the element must load Lumpy\'s track');
+  assert.strictEqual(el.loop, true, 'the track must loop (lessons run longer than the track)');
+  assert.strictEqual(el.volume, 0.5, 'the element volume must be full on a choice exercise');
+  assert.strictEqual(el.paused, false, 'the element must be playing');
+  assert.ok(el.playCalls >= 1, 'play() must have been called');
 
-  // Move to an audio exercise: the music must duck.
+  // Move to an audio exercise: the music must duck, but keep playing.
   vm.runInContext(`
     (function () {
       const idx = session.exercises.findIndex((e) => e.type === 'audio');
@@ -226,9 +254,12 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
     })()
   `, sandbox);
   await sleep(150);
-  const audioGain = vm.runInContext('window.duolibeeMusic.gain', sandbox);
-  console.log('audio exercise gain:', audioGain);
-  assert.strictEqual(audioGain, 0.02, 'an audio exercise must duck the music, got ' + audioGain);
+  const audioState = musicState();
+  console.log('audio exercise:', JSON.stringify(audioState));
+  assert.strictEqual(audioState.volume, 0.08, 'an audio exercise must duck the music, got ' + audioState.volume);
+  assert.strictEqual(audioState.playing, true, 'ducked music must keep playing (the session stays warm)');
+  assert.strictEqual(el.volume, 0.08, 'the element volume must duck');
+  assert.strictEqual(el.paused, false, 'the element must keep playing while ducked');
 
   // And a speaking exercise: still ducked.
   vm.runInContext(`
@@ -238,9 +269,7 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
     })()
   `, sandbox);
   await sleep(150);
-  const speakGain = vm.runInContext('window.duolibeeMusic.gain', sandbox);
-  console.log('speak exercise gain:', speakGain);
-  assert.strictEqual(speakGain, 0.02, 'a speaking exercise must duck the music, got ' + speakGain);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.08, 'a speaking exercise must duck the music');
 
   // Back to a choice exercise: full volume again.
   vm.runInContext(`
@@ -250,67 +279,68 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
     })()
   `, sandbox);
   await sleep(150);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'a choice exercise must restore full volume');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.5, 'a choice exercise must restore full volume');
 
   // Speech playback ducks the music even on a choice exercise, and
   // restores it when the clip ends.
   vm.runInContext('window.duolibeeSpeechStart()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.02, 'speech playback must duck the music');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.08, 'speech playback must duck the music');
   vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'speech end must restore the music');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.5, 'speech end must restore the music');
 
   // A lost speech-end event must not leave the music ducked forever.
   // iOS often never fires the utterance onend, and pausing a clip never
   // fires onended, so if the end hook is lost the music must recover
   // on its own once the clip could not still be playing.
   vm.runInContext('window.duolibeeSpeechStart()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.02, 'speech start must duck the music');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.08, 'speech start must duck the music');
   // No SpeechEnd call: the end event is lost. Fast-forward past the
   // 15s lease and the music must come back up on its own.
   mockNow += 16000;
   vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'a stale speech duck must clear after the lease so the music comes back up');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.5, 'a stale speech duck must clear after the lease so the music comes back up');
   // And a fresh clip still ducks (the lease only clears stale state).
   vm.runInContext('window.duolibeeSpeechStart()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.02, 'a new clip must duck again');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.08, 'a new clip must duck again');
   vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'speech end must restore the music after the lease test');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.5, 'speech end must restore the music after the lease test');
 
-  // The global mute silences the music, and unmuting restores it.
+  // The global mute silences the music and pauses the track, and
+  // unmuting resumes it.
   vm.runInContext('state.settings.muted = true; window.duolibeeMusic.updateMusic()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0, 'mute must silence the music');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0, 'mute must silence the music');
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.playing', sandbox), false, 'mute must report not playing');
+  assert.strictEqual(el.paused, true, 'mute must pause the track');
   vm.runInContext('state.settings.muted = false; window.duolibeeMusic.updateMusic()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'unmute must restore the music');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.5, 'unmute must restore the music');
+  assert.strictEqual(el.paused, false, 'unmute must resume the track');
 
   // The Settings toggle turns it off and on.
   vm.runInContext('window.setMusicEnabled(false)', sandbox);
   assert.strictEqual(vm.runInContext('state.settings.music', sandbox), false, 'turning music off must save the setting');
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0, 'turning music off must silence it');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0, 'turning music off must silence it');
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.playing', sandbox), false, 'turning music off must report not playing');
+  assert.strictEqual(el.paused, true, 'turning music off must pause the track');
   vm.runInContext('window.setMusicEnabled(true)', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'turning music on must restore it during a lesson');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.5, 'turning music on must restore it during a lesson');
+  assert.strictEqual(el.paused, false, 'turning music on must resume the track');
 
-  // Going home stops the music.
+  // Going home stops the music and pauses the track.
   vm.runInContext(`go('home')`, sandbox);
   await sleep(150);
-  const home = vm.runInContext(`
-    (function () { return { playing: window.duolibeeMusic.playing, gain: window.duolibeeMusic.gain }; })()
-  `, sandbox);
+  const home = musicState();
   console.log('home:', JSON.stringify(home));
   assert.strictEqual(home.playing, false, 'music must stop on home');
-  assert.strictEqual(home.gain, 0, 'music gain must be 0 on home');
+  assert.strictEqual(home.volume, 0, 'music volume must be 0 on home');
+  assert.strictEqual(el.paused, true, 'the track must pause on home');
 
-  // Six styles, one per character. A lesson plays its host
-  // character's style, deterministically — no random pick.
-  const styles = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.styles', sandbox)));
-  console.log('styles:', JSON.stringify(styles));
-  assert.deepStrictEqual(styles, ['OPM lofi', 'Love ballad', 'Folk rondalla', 'Arena rock', 'Pop punk', 'Brainrot hyperpop'], 'there must be six styles, one per character');
+  // Six tracks, one per character. A lesson plays its host
+  // character's track, deterministically — no random pick.
   // Lesson -> theme -> host (lessons are grouped four per theme, in
   // theme order): 1 lumpy, 5 jetjet, 13 lola-joli, 21 tita-baby,
   // 33 tito-bong, 53 ate-crystal. A lesson can only start once the
   // earlier ones are complete, so unlock up to it.
-  async function styleForLesson(id) {
+  async function trackForLesson(id) {
     vm.runInContext(`
       (function () {
         for (let i = 1; i < ${id}; i++) state.completed[i] = { last: Date.now() };
@@ -318,41 +348,43 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
       })()
     `, sandbox);
     await sleep(150);
-    return vm.runInContext('window.duolibeeMusic.style', sandbox);
+    return musicState();
   }
   const perCharacter = [
-    [1, 'lumpy', 'OPM lofi'],
-    [5, 'jetjet', 'Brainrot hyperpop'],
-    [13, 'lola-joli', 'Folk rondalla'],
-    [21, 'tita-baby', 'Love ballad'],
-    [33, 'tito-bong', 'Arena rock'],
-    [53, 'ate-crystal', 'Pop punk'],
+    [1, 'lumpy', 'assets/music/lumpy.mp3'],
+    [5, 'jetjet', 'assets/music/jetjet.mp3'],
+    [13, 'lola-joli', 'assets/music/lola-joli.mp3'],
+    [21, 'tita-baby', 'assets/music/tita-baby.mp3'],
+    [33, 'tito-bong', 'assets/music/tito-bong.mp3'],
+    [53, 'ate-crystal', 'assets/music/ate-crystal.mp3'],
   ];
-  for (const [id, host, style] of perCharacter) {
+  for (const [id, host, file] of perCharacter) {
     const gotHost = vm.runInContext(`LESSONS.find(l => l.id === ${id}).host`, sandbox);
     assert.strictEqual(gotHost, host, `lesson ${id} must be hosted by ${host}`);
-    const got = await styleForLesson(id);
-    console.log(`lesson ${id} (${host}):`, got);
-    assert.strictEqual(got, style, `lesson ${id} hosted by ${host} must play ${style}, got ${got}`);
+    const got = await trackForLesson(id);
+    console.log(`lesson ${id} (${host}):`, got.track);
+    assert.strictEqual(got.track, file, `lesson ${id} hosted by ${host} must play ${file}, got ${got.track}`);
+    assert.strictEqual(musicEl().src, file, `lesson ${id} must load ${file} into the element`);
+    assert.strictEqual(got.playing, true, `lesson ${id} must be playing`);
     vm.runInContext(`go('home')`, sandbox);
     await sleep(50);
   }
-  // Replaying the same lesson re-picks the same (deterministic) style.
-  assert.strictEqual(await styleForLesson(33), 'Arena rock', 'replaying a tito-bong lesson must play Arena rock again');
-  // Re-rendering the same first exercise must not re-pick the style.
+  // Replaying the same lesson loads the same track and restarts it.
+  const replay = await trackForLesson(33);
+  assert.strictEqual(replay.track, 'assets/music/tito-bong.mp3', 'replaying a tito-bong lesson must play his track again');
+  assert.strictEqual(musicEl().currentTime, 0, 'replaying a lesson must restart its track from the beginning');
+  // Re-rendering the same first exercise must not reload the track.
+  musicEl().currentTime = 42;
+  const srcBefore = musicEl().src;
+  const playsBefore = musicEl().playCalls;
   vm.runInContext('renderExercise()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Arena rock', 'a re-render must not change the style mid-lesson');
+  assert.strictEqual(musicEl().src, srcBefore, 'a re-render must not reload the track');
+  assert.strictEqual(musicEl().currentTime, 42, 'a re-render must not restart the track');
+  assert.strictEqual(musicEl().playCalls, playsBefore, 'a re-render must not call play() again');
   vm.runInContext(`go('home')`, sandbox);
 
-  // The Jetjet style must actually play: its loop is C-G-Bb-F.
-  await styleForLesson(5);
-  const jetjetChords = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.chords', sandbox)));
-  console.log('jetjet chords:', JSON.stringify(jetjetChords));
-  assert.deepStrictEqual(jetjetChords, ['C', 'G', 'Bb', 'F'], 'the Brainrot hyperpop loop must be C-G-Bb-F');
-  vm.runInContext(`go('home')`, sandbox);
-
-  // A session with no host (review) falls back to OPM lofi. Make one
-  // item due, then start a review.
+  // A session with no host (review) falls back to Lumpy's track.
+  // Make one item due, then start a review.
   vm.runInContext(`
     (function () {
       const item = LESSONS[0].items[0];
@@ -361,15 +393,16 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
     })()
   `, sandbox);
   await sleep(150);
-  const reviewStyle = vm.runInContext('window.duolibeeMusic.style', sandbox);
-  console.log('review style:', reviewStyle);
-  assert.strictEqual(reviewStyle, 'OPM lofi', 'a host-less review session must fall back to OPM lofi, got ' + reviewStyle);
+  const reviewTrack = musicState();
+  console.log('review:', JSON.stringify(reviewTrack));
+  assert.strictEqual(reviewTrack.track, 'assets/music/lumpy.mp3', 'a host-less review session must fall back to Lumpy\'s track, got ' + reviewTrack.track);
+  assert.strictEqual(reviewTrack.playing, true, 'the review must play the fallback track');
   vm.runInContext(`go('home')`, sandbox);
 
-  // ---- Settings preview: hear each character's style without a lesson ----
+  // ---- Settings preview: hear each character's track without a lesson ----
   vm.runInContext(`go('settings')`, sandbox);
   await sleep(50);
-  // The preview section lists all six characters with their style and
+  // The preview section lists all six characters with their track and
   // a play button. (The mock's getElementById always returns an
   // element, so assert on the built section's children instead.)
   const previewSection = vm.runInContext(`document.getElementById('music-preview')`, sandbox);
@@ -384,34 +417,35 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
     ['Tita Baby', 'Love ballad'],
   ];
   previewRows.forEach((row, i) => {
-    assert.strictEqual(row.children[0].textContent, expectedRows[i][0] + ' — ' + expectedRows[i][1], 'row ' + i + ' must name the character and style');
+    assert.strictEqual(row.children[0].textContent, expectedRows[i][0] + ' — ' + expectedRows[i][1], 'row ' + i + ' must name the character and track');
     assert.strictEqual(row.children[1].textContent, '▶ Play', 'row ' + i + ' must start as Play');
     assert.ok(typeof row.children[1].onclick === 'function', 'row ' + i + ' must have a play button handler');
   });
-  // Playing a character's style sets it, at full volume, outside a
-  // lesson — and actually schedules notes.
-  const oscsBefore = musicLog.oscs.length;
+  // Playing a character's track loads it, at full volume, outside a
+  // lesson.
   const lolaBtn = vm.runInContext(`document.getElementById('music-preview-lola-joli')`, sandbox);
   lolaBtn.onclick();
   await sleep(150);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Folk rondalla', 'previewing Lola Joli must play Folk rondalla');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.track', sandbox), 'assets/music/lola-joli.mp3', 'previewing Lola Joli must load her track');
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'lola-joli', 'previewHost must be lola-joli');
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'a preview must play at full volume outside a lesson');
-  assert.ok(musicLog.oscs.length > oscsBefore, 'a preview must schedule notes, got ' + musicLog.oscs.length + ' vs ' + oscsBefore);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.5, 'a preview must play at full volume outside a lesson');
+  assert.strictEqual(musicEl().src, 'assets/music/lola-joli.mp3', 'a preview must load the track into the element');
+  assert.strictEqual(musicEl().paused, false, 'a preview must play');
   assert.strictEqual(lolaBtn.textContent, '⏸ Stop', 'the playing row must show Stop');
-  // Switching to another character switches the style, and the old
+  // Switching to another character switches the track, and the old
   // row goes back to Play.
   const bongBtn = vm.runInContext(`document.getElementById('music-preview-tito-bong')`, sandbox);
   bongBtn.onclick();
   await sleep(150);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Arena rock', 'switching to Tito Bong must play Arena rock');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.track', sandbox), 'assets/music/tito-bong.mp3', 'switching to Tito Bong must load his track');
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'tito-bong', 'previewHost must switch to tito-bong');
   assert.strictEqual(lolaBtn.textContent, '▶ Play', 'the old row must go back to Play');
   assert.strictEqual(bongBtn.textContent, '⏸ Stop', 'the new row must show Stop');
   // Tapping the same button again stops the preview.
   bongBtn.onclick();
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'tapping the playing button again must stop the preview');
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0, 'a stopped preview must be silent');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0, 'a stopped preview must be silent');
+  assert.strictEqual(musicEl().paused, true, 'a stopped preview must pause the element');
   assert.strictEqual(bongBtn.textContent, '▶ Play', 'the stopped row must go back to Play');
   // The preview plays even if the lesson-music toggle is off.
   vm.runInContext('window.setMusicEnabled(false)', sandbox);
@@ -419,14 +453,15 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   lolaBtn.onclick();
   await sleep(150);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'lola-joli', 'a preview must start even with the lesson-music toggle off');
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'a preview must play at full volume even with the toggle off');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.5, 'a preview must play at full volume even with the toggle off');
   vm.runInContext('window.setMusicEnabled(true)', sandbox);
   // Leaving Settings stops the preview.
   vm.runInContext(`go('home')`, sandbox);
   await sleep(50);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'leaving Settings must stop a preview');
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0, 'leaving Settings must silence the preview');
-  // Starting a lesson stops a preview and plays the lesson's host style.
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0, 'leaving Settings must silence the preview');
+  assert.strictEqual(musicEl().paused, true, 'leaving Settings must pause the element');
+  // Starting a lesson stops a preview and plays the lesson's host track.
   vm.runInContext(`go('settings')`, sandbox);
   await sleep(50);
   const lolaBtn2 = vm.runInContext(`document.getElementById('music-preview-lola-joli')`, sandbox);
@@ -436,7 +471,24 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   vm.runInContext('startLesson(1)', sandbox);
   await sleep(150);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'starting a lesson must stop a preview');
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'OPM lofi', 'the lesson must play its own host style, not the preview');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.track', sandbox), 'assets/music/lumpy.mp3', 'the lesson must play its own host track, not the preview');
+  vm.runInContext(`go('home')`, sandbox);
+
+  // ---- A track that fails to load must not break the lesson ----
+  vm.runInContext('startLesson(1)', sandbox);
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.playing', sandbox), true, 'the lesson must be playing before the failure');
+  musicEl()._fire('error');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0, 'a failed track must go silent');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.playing', sandbox), false, 'a failed track must report not playing');
+  assert.strictEqual(musicEl().paused, true, 'a failed track must pause the element');
+  // The lesson itself still works: navigating and answering do not
+  // throw, and starting a new lesson recovers the music.
+  vm.runInContext('renderExercise()', sandbox);
+  vm.runInContext(`go('home')`, sandbox);
+  await trackForLesson(5);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.track', sandbox), 'assets/music/jetjet.mp3', 'a new lesson after a failure must load its track');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.playing', sandbox), true, 'a new lesson after a failure must play again');
   vm.runInContext(`go('home')`, sandbox);
 
   console.log('LESSON MUSIC: PASS');
