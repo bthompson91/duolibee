@@ -1,7 +1,11 @@
-// Lesson music test: the OPM lofi loop starts with a lesson, ducks for
+// Lesson music test: the study-beat loop starts with a lesson, ducks for
 // listening/speaking and while speech plays, respects mute and the
-// Settings toggle, and stops on home. The Web Audio API is mocked so the
-// scheduled notes and gains can be asserted. Run from the repo root:
+// Settings toggle, and stops on home. Each lesson plays its host
+// character's style (lumpy OPM lofi, tito-bong City pop, ate-crystal
+// Rainy jazz, jetjet Playful bounce, lola-joli Dreamy ambient,
+// tita-baby Bossa café); a session with no host (review) falls back to
+// OPM lofi. The Web Audio API is mocked so the scheduled notes and
+// gains can be asserted. Run from the repo root:
 // node <this file>
 const fs = require('fs');
 const vm = require('vm');
@@ -69,11 +73,6 @@ MockDate.now = () => mockNow;
 MockDate.parse = RealDate.parse;
 MockDate.UTC = RealDate.UTC;
 MockDate.prototype = RealDate.prototype;
-// Controllable randomness: lesson-music.js picks a style with
-// Math.random(), so the test can force which style a lesson gets.
-let mockRandom = 0;
-const sandboxMath = Object.create(Math);
-sandboxMath.random = () => mockRandom;
 class MockParam {
   constructor() { this.value = 0; this.events = []; }
   setValueAtTime(v) { this.value = v; this.events.push(['set', v]); }
@@ -116,7 +115,7 @@ const origCreateGain = MockAudioContext.prototype.createGain;
 const sandbox = {
   console, setTimeout, clearTimeout, setInterval, clearInterval,
   URL, URLSearchParams, Blob,
-  Math: sandboxMath, JSON, Object, Array, Promise, Error, RegExp, Date: MockDate,
+  Math, JSON, Object, Array, Promise, Error, RegExp, Date: MockDate,
   document: {
     getElementById: (id) => (id === 'app' ? appEl : getEl(id)),
     createElement: (tag) => new El(tag),
@@ -195,8 +194,8 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   vm.runInContext('startLesson(1)', sandbox);
   mockTime = 0.5;
   await sleep(250);
-  // mockRandom is 0, so lesson 1 picks the OPM lofi style: the chord
-  // progression is the OPM I-vi-IV-V: Cmaj7, Am7, Fmaj7, G7.
+  // Lesson 1 is hosted by lumpy, so it plays the OPM lofi style: the
+  // chord progression is the OPM I-vi-IV-V: Cmaj7, Am7, Fmaj7, G7.
   // (JSON round-trip: vm arrays carry the vm's Array prototype, which
   // deepStrictEqual rejects.)
   const chords = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.chords', sandbox)));
@@ -300,25 +299,70 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   assert.strictEqual(home.playing, false, 'music must stop on home');
   assert.strictEqual(home.gain, 0, 'music gain must be 0 on home');
 
-  // Five styles, and one is picked at random each time a lesson
-  // starts. mockRandom forces the pick, so the rotation is exact.
-  // (Lesson 2 is locked in a fresh profile, so the rotation is proven
-  // by replaying lesson 1 — a fresh start picks again.)
+  // Six styles, one per character. A lesson plays its host
+  // character's style, deterministically — no random pick.
   const styles = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.styles', sandbox)));
   console.log('styles:', JSON.stringify(styles));
-  assert.deepStrictEqual(styles, ['OPM lofi', 'Bossa café', 'Dreamy ambient', 'City pop', 'Rainy jazz'], 'there must be five styles');
-  mockRandom = 0; // style 0: OPM lofi
-  vm.runInContext('startLesson(1)', sandbox);
-  await sleep(150);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'OPM lofi', 'mockRandom 0 must pick OPM lofi');
-  vm.runInContext(`go('home')`, sandbox);
-  mockRandom = 0.99; // style 4: Rainy jazz
-  vm.runInContext('startLesson(1)', sandbox);
-  await sleep(150);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Rainy jazz', 'mockRandom 0.99 must pick Rainy jazz on a fresh start');
+  assert.deepStrictEqual(styles, ['OPM lofi', 'Bossa café', 'Dreamy ambient', 'City pop', 'Rainy jazz', 'Playful bounce'], 'there must be six styles, one per character');
+  // Lesson -> theme -> host (lessons are grouped four per theme, in
+  // theme order): 1 lumpy, 5 jetjet, 13 lola-joli, 21 tita-baby,
+  // 33 tito-bong, 53 ate-crystal. A lesson can only start once the
+  // earlier ones are complete, so unlock up to it.
+  async function styleForLesson(id) {
+    vm.runInContext(`
+      (function () {
+        for (let i = 1; i < ${id}; i++) state.completed[i] = { last: Date.now() };
+        startLesson(${id});
+      })()
+    `, sandbox);
+    await sleep(150);
+    return vm.runInContext('window.duolibeeMusic.style', sandbox);
+  }
+  const perCharacter = [
+    [1, 'lumpy', 'OPM lofi'],
+    [5, 'jetjet', 'Playful bounce'],
+    [13, 'lola-joli', 'Dreamy ambient'],
+    [21, 'tita-baby', 'Bossa café'],
+    [33, 'tito-bong', 'City pop'],
+    [53, 'ate-crystal', 'Rainy jazz'],
+  ];
+  for (const [id, host, style] of perCharacter) {
+    const gotHost = vm.runInContext(`LESSONS.find(l => l.id === ${id}).host`, sandbox);
+    assert.strictEqual(gotHost, host, `lesson ${id} must be hosted by ${host}`);
+    const got = await styleForLesson(id);
+    console.log(`lesson ${id} (${host}):`, got);
+    assert.strictEqual(got, style, `lesson ${id} hosted by ${host} must play ${style}, got ${got}`);
+    vm.runInContext(`go('home')`, sandbox);
+    await sleep(50);
+  }
+  // Replaying the same lesson re-picks the same (deterministic) style.
+  assert.strictEqual(await styleForLesson(33), 'City pop', 'replaying a tito-bong lesson must play City pop again');
   // Re-rendering the same first exercise must not re-pick the style.
   vm.runInContext('renderExercise()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Rainy jazz', 'a re-render must not change the style mid-lesson');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'City pop', 'a re-render must not change the style mid-lesson');
+  vm.runInContext(`go('home')`, sandbox);
+
+  // The Jetjet style must actually play: its loop is C-F-Dm-G.
+  await styleForLesson(5);
+  const jetjetChords = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.chords', sandbox)));
+  console.log('jetjet chords:', JSON.stringify(jetjetChords));
+  assert.deepStrictEqual(jetjetChords, ['C', 'F', 'Dm', 'G'], 'the Playful bounce loop must be C-F-Dm-G');
+  vm.runInContext(`go('home')`, sandbox);
+
+  // A session with no host (review) falls back to OPM lofi. Make one
+  // item due, then start a review.
+  vm.runInContext(`
+    (function () {
+      const item = LESSONS[0].items[0];
+      state.srs[srsKey(LESSONS[0].category, item.t)] = { due: 0 };
+      startReview();
+    })()
+  `, sandbox);
+  await sleep(150);
+  const reviewStyle = vm.runInContext('window.duolibeeMusic.style', sandbox);
+  console.log('review style:', reviewStyle);
+  assert.strictEqual(reviewStyle, 'OPM lofi', 'a host-less review session must fall back to OPM lofi, got ' + reviewStyle);
+  vm.runInContext(`go('home')`, sandbox);
 
   console.log('LESSON MUSIC: PASS');
   process.exit(0);

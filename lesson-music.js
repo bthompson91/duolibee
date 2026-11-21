@@ -5,18 +5,21 @@
 // the device: every note is synthesized live with the Web Audio API, so
 // there is no audio file, no server call, and no extra download.
 //
-// There are five styles, and one is picked at random each time a lesson
-// starts, so the background changes from lesson to lesson:
-//   * OPM lofi — the original: 72 BPM, Cmaj7-Am7-Fmaj7-G7, swung beat,
+// There are six styles, one per character, and a lesson plays its
+// host character's style, so the background matches who is teaching:
+//   * OPM lofi — Lumpy: 72 BPM, Cmaj7-Am7-Fmaj7-G7, swung beat,
 //     vinyl crackle, a sparse pentatonic melody.
-//   * Bossa café — 84 BPM, a jazzy Dm7-G7-Cmaj9-Fmaj9, a bossa bass
-//     pulse and a shaker-like hat.
-//   * Dreamy ambient — 60 BPM, no drums at all: slow Am9-Fmaj9-Cmaj9-G6
-//     pads with a few high music-box sparkles.
-//   * City pop — 96 BPM, a bright bouncy C-G-Am-F, four-on-the-floor
-//     kick and a busier glockenspiel-like melody.
-//   * Rainy jazz — 66 BPM, a Cmaj7-A7-Dm7-G7 turnaround, swung ride,
-//     walking bass, brush snare.
+//   * Bossa café — Tita Baby: 84 BPM, a jazzy Dm7-G7-Cmaj9-Fmaj9,
+//     a bossa bass pulse and a shaker-like hat.
+//   * Dreamy ambient — Lola Joli: 60 BPM, no drums at all: slow
+//     Am9-Fmaj9-Cmaj9-G6 pads with a few high music-box sparkles.
+//   * City pop — Tito Bong: 96 BPM, a bright bouncy C-G-Am-F,
+//     four-on-the-floor kick and a busier glockenspiel-like melody.
+//   * Rainy jazz — Ate Crystal: 66 BPM, a Cmaj7-A7-Dm7-G7
+//     turnaround, swung ride, walking bass, brush snare.
+//   * Playful bounce — Jetjet: 120 BPM, a bright C-F-Dm-G,
+//     four-on-the-floor kick and a busy plucky melody with a
+//     syncopated bass, fast and bouncy like a Beyblade battle.
 //
 // Behaviour:
 //   * Starts when a lesson starts (a tap, so iOS allows the audio),
@@ -129,7 +132,36 @@
       ],
       kick: [0], snare: [4, 12], hat: [0, 4, 8, 12], bass: [0, 4, 8, 12],
     },
+    {
+      name: 'Playful bounce', bpm: 120, swing: 0.06, crackle: false,
+      chords: [
+        { name: 'C', pad: [60, 64, 67, 72], bass: 48 },
+        { name: 'F', pad: [53, 57, 60, 65], bass: 41 },
+        { name: 'Dm', pad: [62, 65, 69, 72], bass: 38 },
+        { name: 'G', pad: [59, 62, 67, 71], bass: 43 },
+      ],
+      melody: [
+        [0, 0, 79, 1], [0, 2, 81, 1], [0, 4, 84, 2], [0, 8, 81, 1], [0, 10, 79, 1], [0, 12, 76, 2],
+        [1, 0, 77, 1], [1, 2, 79, 1], [1, 4, 81, 2], [1, 8, 84, 1], [1, 10, 81, 1], [1, 12, 79, 2],
+        [2, 0, 84, 1], [2, 2, 81, 1], [2, 4, 79, 2], [2, 8, 76, 1], [2, 10, 79, 1], [2, 12, 81, 2],
+        [3, 0, 79, 1], [3, 2, 81, 1], [3, 4, 84, 2], [3, 8, 86, 1], [3, 10, 84, 1], [3, 12, 81, 4],
+      ],
+      kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], bass: [0, 6, 8, 14],
+    },
   ];
+
+  // One style per character: a lesson plays its host character's
+  // music. Lessons carry `host` (category-generator.js puts the theme's
+  // host on every lesson); review and category sessions have no host
+  // and fall back to the OPM lofi default.
+  const HOST_STYLE = {
+    'lumpy': 'OPM lofi',
+    'tito-bong': 'City pop',
+    'ate-crystal': 'Rainy jazz',
+    'jetjet': 'Playful bounce',
+    'lola-joli': 'Dreamy ambient',
+    'tita-baby': 'Bossa café',
+  };
 
   let ctx = null;
   let master = null;
@@ -145,10 +177,11 @@
   // navigates away. session/index alone cannot tell "in a lesson"
   // from "went home mid-lesson", because go('home') leaves them set.
   let inLessonView = false;
-  // The style for the lesson in progress. A new style is picked when a
-  // lesson starts (its first exercise, coming from not being in a
-  // lesson), never mid-lesson. Replaying the same lesson counts as a
-  // fresh start, so it can pick a different style.
+  // The style for the lesson in progress. It is picked when a lesson
+  // starts (its first exercise, coming from not being in a lesson),
+  // never mid-lesson. The pick is deterministic — the host character's
+  // style — so replaying the same lesson plays the same music, and
+  // re-rendering the first exercise does not re-pick.
   let currentStyle = null;
   let wasInLesson = false;
 
@@ -223,8 +256,25 @@
     try { master.gain.setTargetAtTime(g, ctx.currentTime, 0.4); } catch (e) { /* ignore */ }
   }
 
+  function lessonHost() {
+    // The lesson's host character. Lessons carry `host` directly; if
+    // it is missing, look it up from the theme (session.category is
+    // the theme name). Review and other host-less sessions return
+    // null and fall back to the default style.
+    try {
+      if (typeof session !== 'undefined' && session && session.host) return session.host;
+      if (typeof session !== 'undefined' && session && session.category && typeof THEMES !== 'undefined' && Array.isArray(THEMES)) {
+        const th = THEMES.find((t) => t.name === session.category);
+        if (th && th.host) return th.host;
+      }
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+
   function pickStyle() {
-    currentStyle = STYLES[Math.floor(Math.random() * STYLES.length)];
+    const host = lessonHost();
+    const name = (host && HOST_STYLE[host]) || 'OPM lofi';
+    currentStyle = STYLES.find((s) => s.name === name) || STYLES[0];
     if (crackleGain) {
       try { crackleGain.gain.value = currentStyle.crackle ? 0.012 : 0; } catch (e) { /* ignore */ }
     }
@@ -370,9 +420,10 @@
     if (!ensureCtx()) return;
     if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch (e) { /* ignore */ } }
     // A lesson has started when we are on its first exercise and we
-    // were not in a lesson before. Pick a style at random and keep it
-    // for the whole lesson; re-rendering the first exercise does not
-    // re-pick, but replaying the lesson does.
+    // were not in a lesson before. Pick the host character's style and
+    // keep it for the whole lesson; re-rendering the first exercise
+    // does not re-pick, but replaying the lesson does (same style —
+    // the pick is deterministic by character).
     if (!currentStyle || (typeof index === 'number' && index === 0 && !wasInLesson)) {
       pickStyle();
       nextStep = 0;
@@ -437,10 +488,10 @@
     box.id = 'music-setting-box';
     box.checked = musicOn();
     box.onchange = () => { setMusicEnabled(box.checked); };
-    label.append(box, document.createTextNode(' Background music during lessons (OPM lofi)'));
+    label.append(box, document.createTextNode(' Background music during lessons'));
     const note = document.createElement('span');
     note.className = 'setting-note';
-    note.textContent = 'Soft study beats, made in your browser — one of five styles is picked at random each lesson, and it quiets itself for listening and speaking questions.';
+    note.textContent = 'Soft study beats, made in your browser — each character has their own style, and it quiets itself for listening and speaking questions.';
     label.append(note);
     const card = app.querySelector('.card');
     if (card) card.append(label);
