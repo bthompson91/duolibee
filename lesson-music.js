@@ -1,17 +1,22 @@
-// DUOLIBEE lesson music — OPM-flavoured lofi, generated in the browser.
+// DUOLIBEE lesson music — study beats, generated in the browser.
 //
-// A soft "beats to study to" loop that plays while a lesson is in
-// progress, and stops when the lesson ends. Nothing is downloaded and
-// nothing leaves the device: every note is synthesized live with the
-// Web Audio API, so there is no audio file, no server call, and no
-// extra download.
+// A soft background loop that plays while a lesson is in progress, and
+// stops when the lesson ends. Nothing is downloaded and nothing leaves
+// the device: every note is synthesized live with the Web Audio API, so
+// there is no audio file, no server call, and no extra download.
 //
-// The sound: a slow (72 BPM) four-bar loop over the classic OPM
-// I-vi-IV-V progression (Cmaj7 - Am7 - Fmaj7 - G7), voiced as warm
-// seventh chords with smooth voice-leading, a soft sine bass on the
-// roots, a swung lofi beat (kick, snare, hats), a whisper of vinyl
-// crackle, and a sparse pentatonic melody that stays on chord tones —
-// dreamy and girl-coded, never loud enough to fight the Tagalog.
+// There are five styles, and one is picked at random each time a lesson
+// starts, so the background changes from lesson to lesson:
+//   * OPM lofi — the original: 72 BPM, Cmaj7-Am7-Fmaj7-G7, swung beat,
+//     vinyl crackle, a sparse pentatonic melody.
+//   * Bossa café — 84 BPM, a jazzy Dm7-G7-Cmaj9-Fmaj9, a bossa bass
+//     pulse and a shaker-like hat.
+//   * Dreamy ambient — 60 BPM, no drums at all: slow Am9-Fmaj9-Cmaj9-G6
+//     pads with a few high music-box sparkles.
+//   * City pop — 96 BPM, a bright bouncy C-G-Am-F, four-on-the-floor
+//     kick and a busier glockenspiel-like melody.
+//   * Rainy jazz — 66 BPM, a Cmaj7-A7-Dm7-G7 turnaround, swung ride,
+//     walking bass, brush snare.
 //
 // Behaviour:
 //   * Starts when a lesson starts (a tap, so iOS allows the audio),
@@ -22,39 +27,109 @@
 //   * Respects the global mute (the speaker icon) and has its own
 //     Settings toggle, on by default. Turning music off stops it at
 //     once; turning it on starts it again if a lesson is in progress.
+//
+// A side effect worth knowing: keeping a Web Audio context running
+// keeps iOS Safari's audio session warm, so the speech clips start
+// instantly instead of waiting for the session to spin up.
 (() => {
-  const BPM = 72;
   const STEPS_PER_BAR = 16;
   const BARS = 4;
   const TOTAL_STEPS = STEPS_PER_BAR * BARS;
-  const STEP_SEC = 60 / BPM / 4;
-  const SWING = 0.12; // off-beat 16ths are pushed late by this much of a step
 
   const NORMAL_GAIN = 0.12;
   const DUCK_GAIN = 0.02;
+  // No pronunciation clip runs this long. If speech has been "playing"
+  // for longer, the end event was lost (iOS often never fires the
+  // utterance onend, and pausing a clip never fires onended) — clear it
+  // so the music comes back up on its own.
+  const SPEECH_LEASE_MS = 15000;
 
-  // Chords: [name, pad midi notes, bass midi note]. Voice-led so each
-  // note moves by a step or stays put between bars.
-  const CHORDS = [
-    { name: 'Cmaj7', pad: [60, 64, 67, 71], bass: 48 },
-    { name: 'Am7', pad: [57, 60, 64, 67], bass: 45 },
-    { name: 'Fmaj7', pad: [53, 57, 60, 64], bass: 41 },
-    { name: 'G7', pad: [55, 59, 62, 65], bass: 43 },
+  // A style: [name, pad midi notes, bass midi note] per chord, a melody
+  // of [bar, step, midi note, length in steps], and the drum/bass steps
+  // (0-based within the bar). An empty step list means that part is
+  // silent for the style.
+  const STYLES = [
+    {
+      name: 'OPM lofi', bpm: 72, swing: 0.12, crackle: true,
+      chords: [
+        { name: 'Cmaj7', pad: [60, 64, 67, 71], bass: 48 },
+        { name: 'Am7', pad: [57, 60, 64, 67], bass: 45 },
+        { name: 'Fmaj7', pad: [53, 57, 60, 64], bass: 41 },
+        { name: 'G7', pad: [55, 59, 62, 65], bass: 43 },
+      ],
+      melody: [
+        [0, 0, 76, 3], [0, 6, 79, 2], [0, 12, 84, 4],
+        [1, 0, 72, 3], [1, 8, 76, 2], [1, 12, 81, 4],
+        [2, 0, 81, 3], [2, 6, 84, 2], [2, 12, 77, 4],
+        [3, 0, 71, 3], [3, 8, 74, 2], [3, 12, 79, 4],
+      ],
+      kick: [0, 8, 10], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], bass: [0, 8],
+    },
+    {
+      name: 'Bossa café', bpm: 84, swing: 0.10, crackle: true,
+      chords: [
+        { name: 'Dm7', pad: [62, 65, 69, 72], bass: 38 },
+        { name: 'G7', pad: [59, 62, 65, 69], bass: 43 },
+        { name: 'Cmaj9', pad: [60, 64, 67, 74], bass: 48 },
+        { name: 'Fmaj9', pad: [65, 69, 72, 79], bass: 41 },
+      ],
+      melody: [
+        [0, 0, 74, 3], [0, 8, 76, 2], [0, 12, 79, 4],
+        [1, 0, 77, 3], [1, 8, 76, 2], [1, 12, 74, 4],
+        [2, 0, 72, 3], [2, 8, 74, 2], [2, 12, 76, 4],
+        [3, 0, 79, 3], [3, 8, 77, 2], [3, 12, 74, 4],
+      ],
+      kick: [0, 8], snare: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], bass: [0, 10],
+    },
+    {
+      name: 'Dreamy ambient', bpm: 60, swing: 0, crackle: false,
+      chords: [
+        { name: 'Am9', pad: [57, 60, 64, 71], bass: 45 },
+        { name: 'Fmaj9', pad: [65, 69, 72, 79], bass: 41 },
+        { name: 'Cmaj9', pad: [60, 64, 67, 74], bass: 48 },
+        { name: 'G6', pad: [59, 62, 64, 67], bass: 43 },
+      ],
+      melody: [
+        [0, 0, 84, 8],
+        [1, 8, 81, 8],
+        [2, 0, 79, 8],
+        [3, 8, 84, 8],
+      ],
+      kick: [], snare: [], hat: [], bass: [0],
+    },
+    {
+      name: 'City pop', bpm: 96, swing: 0.05, crackle: false,
+      chords: [
+        { name: 'C', pad: [60, 64, 67, 72], bass: 48 },
+        { name: 'G', pad: [59, 62, 67, 71], bass: 43 },
+        { name: 'Am', pad: [57, 60, 64, 69], bass: 45 },
+        { name: 'F', pad: [53, 57, 60, 65], bass: 41 },
+      ],
+      melody: [
+        [0, 0, 76, 2], [0, 4, 79, 2], [0, 8, 81, 2], [0, 12, 79, 2],
+        [1, 0, 76, 2], [1, 4, 74, 2], [1, 8, 76, 2], [1, 12, 79, 4],
+        [2, 0, 81, 2], [2, 4, 79, 2], [2, 8, 76, 2], [2, 12, 74, 2],
+        [3, 0, 76, 2], [3, 4, 79, 2], [3, 8, 81, 2], [3, 12, 84, 4],
+      ],
+      kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], bass: [0, 4, 8, 12],
+    },
+    {
+      name: 'Rainy jazz', bpm: 66, swing: 0.15, crackle: true,
+      chords: [
+        { name: 'Cmaj7', pad: [60, 64, 67, 71], bass: 48 },
+        { name: 'A7', pad: [57, 61, 64, 67], bass: 45 },
+        { name: 'Dm7', pad: [62, 65, 69, 72], bass: 38 },
+        { name: 'G7', pad: [55, 59, 62, 65], bass: 43 },
+      ],
+      melody: [
+        [0, 0, 76, 3], [0, 8, 79, 2], [0, 12, 81, 4],
+        [1, 0, 76, 3], [1, 8, 73, 2], [1, 12, 76, 4],
+        [2, 0, 77, 3], [2, 8, 81, 2], [2, 12, 77, 4],
+        [3, 0, 79, 3], [3, 8, 74, 2], [3, 12, 77, 4],
+      ],
+      kick: [0], snare: [4, 12], hat: [0, 4, 8, 12], bass: [0, 4, 8, 12],
+    },
   ];
-  // Melody: [bar, step, midi note, length in steps]. C major pentatonic,
-  // chord tones only, one gentle phrase per loop.
-  const MELODY = [
-    [0, 0, 76, 3], [0, 6, 79, 2], [0, 12, 84, 4],
-    [1, 0, 72, 3], [1, 8, 76, 2], [1, 12, 81, 4],
-    [2, 0, 81, 3], [2, 6, 84, 2], [2, 12, 77, 4],
-    [3, 0, 71, 3], [3, 8, 74, 2], [3, 12, 79, 4],
-  ];
-  // Drums: [step, kind]. Kick on 1 and 3 (plus the "and" of 2), snare
-  // on 2 and 4, hats on the 8ths. Steps are 0-based within the bar.
-  const KICK_STEPS = [0, 8, 10];
-  const SNARE_STEPS = [4, 12];
-  const HAT_STEPS = [0, 2, 4, 6, 8, 10, 12, 14];
-  const BASS_STEPS = [0, 8];
 
   let ctx = null;
   let master = null;
@@ -70,8 +145,15 @@
   // navigates away. session/index alone cannot tell "in a lesson"
   // from "went home mid-lesson", because go('home') leaves them set.
   let inLessonView = false;
+  // The style for the lesson in progress. A new style is picked when a
+  // lesson starts (its first exercise, coming from not being in a
+  // lesson), never mid-lesson. Replaying the same lesson counts as a
+  // fresh start, so it can pick a different style.
+  let currentStyle = null;
+  let wasInLesson = false;
 
   function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+  function stepSec() { return 60 / (currentStyle ? currentStyle.bpm : 72) / 4; }
 
   function musicOn() { return state.settings.music !== false; }
   function muted() { return !!(state.settings && state.settings.muted); }
@@ -92,7 +174,7 @@
     // pausing a clip never fires onended, so if speech has been
     // "playing" for longer than any pronunciation clip can run, it is
     // stale — clear it and let the music come back up.
-    if (speechPlaying && speechSince && Date.now() - speechSince > 15000) {
+    if (speechPlaying && speechSince && Date.now() - speechSince > SPEECH_LEASE_MS) {
       speechPlaying = false;
       speechSince = 0;
     }
@@ -119,6 +201,7 @@
     const data = noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
     // Vinyl crackle: the same noise, lowpassed and barely audible.
+    // Some styles use it, some do not; pickStyle sets its level.
     crackleSrc = ctx.createBufferSource();
     crackleSrc.buffer = noiseBuf;
     crackleSrc.loop = true;
@@ -138,6 +221,14 @@
     if (!ctx || !master) return;
     const g = targetGain();
     try { master.gain.setTargetAtTime(g, ctx.currentTime, 0.4); } catch (e) { /* ignore */ }
+  }
+
+  function pickStyle() {
+    currentStyle = STYLES[Math.floor(Math.random() * STYLES.length)];
+    if (crackleGain) {
+      try { crackleGain.gain.value = currentStyle.crackle ? 0.012 : 0; } catch (e) { /* ignore */ }
+    }
+    return currentStyle;
   }
 
   // ---- Instruments (all scheduled ahead of time) ----
@@ -233,23 +324,25 @@
   function stepTime(step, baseTime) {
     // Swing: odd 16ths land late.
     const barStep = step % STEPS_PER_BAR;
-    const swing = (barStep % 2 === 1) ? SWING * STEP_SEC : 0;
-    return baseTime + step * STEP_SEC + swing;
+    const swing = (barStep % 2 === 1) ? (currentStyle ? currentStyle.swing : 0.12) * stepSec() : 0;
+    return baseTime + step * stepSec() + swing;
   }
   function scheduleStep(step, time) {
+    const s = currentStyle;
+    if (!s) return;
     const bar = Math.floor(step / STEPS_PER_BAR) % BARS;
     const barStep = step % STEPS_PER_BAR;
-    const chord = CHORDS[bar];
+    const chord = s.chords[bar];
     if (barStep === 0) {
-      const barDur = STEPS_PER_BAR * STEP_SEC;
+      const barDur = STEPS_PER_BAR * stepSec();
       for (const m of chord.pad) padNote(m, time, barDur);
     }
-    if (BASS_STEPS.includes(barStep)) bassNote(chord.bass, time, STEP_SEC * 6);
-    if (KICK_STEPS.includes(barStep)) kick(time);
-    if (SNARE_STEPS.includes(barStep)) snare(time);
-    if (HAT_STEPS.includes(barStep)) hat(time, barStep === 14);
-    for (const [mBar, mStep, midi, len] of MELODY) {
-      if (mBar === bar && mStep === barStep) melodyNote(midi, time, len * STEP_SEC);
+    if (s.bass.includes(barStep)) bassNote(chord.bass, time, stepSec() * 6);
+    if (s.kick.includes(barStep)) kick(time);
+    if (s.snare.includes(barStep)) snare(time);
+    if (s.hat.includes(barStep)) hat(time, barStep === 14);
+    for (const [mBar, mStep, midi, len] of s.melody) {
+      if (mBar === bar && mStep === barStep) melodyNote(midi, time, len * stepSec());
     }
   }
 
@@ -259,21 +352,33 @@
       if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
     } catch (e) { /* not yet allowed; a later tap will resume it */ }
     applyGain();
-    if (!lessonActive() || !musicOn() || muted()) return;
+    if (!lessonActive() || !musicOn() || muted() || !currentStyle) return;
     while (nextTime < ctx.currentTime + 0.3) {
       scheduleStep(nextStep, stepTime(nextStep, nextTime));
-      nextTime += STEP_SEC;
+      nextTime += stepSec();
       nextStep = (nextStep + 1) % TOTAL_STEPS;
     }
   }
 
   function updateMusic() {
-    if (!lessonActive() || !musicOn()) {
+    const active = lessonActive();
+    if (!active || !musicOn()) {
       if (master) applyGain();
+      wasInLesson = false;
       return;
     }
     if (!ensureCtx()) return;
     if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch (e) { /* ignore */ } }
+    // A lesson has started when we are on its first exercise and we
+    // were not in a lesson before. Pick a style at random and keep it
+    // for the whole lesson; re-rendering the first exercise does not
+    // re-pick, but replaying the lesson does.
+    if (!currentStyle || (typeof index === 'number' && index === 0 && !wasInLesson)) {
+      pickStyle();
+      nextStep = 0;
+      nextTime = ctx.currentTime + 0.1;
+    }
+    wasInLesson = true;
     if (timer == null) {
       nextStep = 0;
       nextTime = ctx.currentTime + 0.1;
@@ -335,7 +440,7 @@
     label.append(box, document.createTextNode(' Background music during lessons (OPM lofi)'));
     const note = document.createElement('span');
     note.className = 'setting-note';
-    note.textContent = 'Soft study beats, made in your browser — it quiets itself for listening and speaking questions.';
+    note.textContent = 'Soft study beats, made in your browser — one of five styles is picked at random each lesson, and it quiets itself for listening and speaking questions.';
     label.append(note);
     const card = app.querySelector('.card');
     if (card) card.append(label);
@@ -345,6 +450,8 @@
     updateMusic, setMusicEnabled,
     get playing() { return timer != null && lessonActive() && musicOn() && !muted(); },
     get gain() { return targetGain(); },
-    get chords() { return CHORDS.map((c) => c.name); },
+    get style() { return currentStyle ? currentStyle.name : null; },
+    get styles() { return STYLES.map((s) => s.name); },
+    get chords() { return currentStyle ? currentStyle.chords.map((c) => c.name) : []; },
   };
 })();

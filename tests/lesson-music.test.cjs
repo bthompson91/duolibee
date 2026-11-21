@@ -69,6 +69,11 @@ MockDate.now = () => mockNow;
 MockDate.parse = RealDate.parse;
 MockDate.UTC = RealDate.UTC;
 MockDate.prototype = RealDate.prototype;
+// Controllable randomness: lesson-music.js picks a style with
+// Math.random(), so the test can force which style a lesson gets.
+let mockRandom = 0;
+const sandboxMath = Object.create(Math);
+sandboxMath.random = () => mockRandom;
 class MockParam {
   constructor() { this.value = 0; this.events = []; }
   setValueAtTime(v) { this.value = v; this.events.push(['set', v]); }
@@ -111,7 +116,7 @@ const origCreateGain = MockAudioContext.prototype.createGain;
 const sandbox = {
   console, setTimeout, clearTimeout, setInterval, clearInterval,
   URL, URLSearchParams, Blob,
-  Math, JSON, Object, Array, Promise, Error, RegExp, Date: MockDate,
+  Math: sandboxMath, JSON, Object, Array, Promise, Error, RegExp, Date: MockDate,
   document: {
     getElementById: (id) => (id === 'app' ? appEl : getEl(id)),
     createElement: (tag) => new El(tag),
@@ -181,13 +186,6 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   assert.ok(vm.runInContext('LESSONS.length', sandbox) > 0, 'lessons must load');
   assert.ok(vm.runInContext('typeof window.duolibeeMusic !== "undefined"', sandbox), 'lesson-music.js must expose window.duolibeeMusic');
 
-  // The chord progression is the OPM I-vi-IV-V: Cmaj7, Am7, Fmaj7, G7.
-  // (JSON round-trip: vm arrays carry the vm's Array prototype, which
-  // deepStrictEqual rejects.)
-  const chords = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.chords', sandbox)));
-  console.log('chords:', JSON.stringify(chords));
-  assert.deepStrictEqual(chords, ['Cmaj7', 'Am7', 'Fmaj7', 'G7'], 'the loop must be the OPM I-vi-IV-V');
-
   // Music is on by default (no setting stored yet).
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0, 'no lesson yet, so the gain must be 0');
 
@@ -197,6 +195,13 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   vm.runInContext('startLesson(1)', sandbox);
   mockTime = 0.5;
   await sleep(250);
+  // mockRandom is 0, so lesson 1 picks the OPM lofi style: the chord
+  // progression is the OPM I-vi-IV-V: Cmaj7, Am7, Fmaj7, G7.
+  // (JSON round-trip: vm arrays carry the vm's Array prototype, which
+  // deepStrictEqual rejects.)
+  const chords = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.chords', sandbox)));
+  console.log('chords:', JSON.stringify(chords));
+  assert.deepStrictEqual(chords, ['Cmaj7', 'Am7', 'Fmaj7', 'G7'], 'the loop must be the OPM I-vi-IV-V');
   const playing = vm.runInContext(`
     (function () {
       return { playing: window.duolibeeMusic.playing, gain: window.duolibeeMusic.gain, type: session.exercises[index].type };
@@ -294,6 +299,26 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   console.log('home:', JSON.stringify(home));
   assert.strictEqual(home.playing, false, 'music must stop on home');
   assert.strictEqual(home.gain, 0, 'music gain must be 0 on home');
+
+  // Five styles, and one is picked at random each time a lesson
+  // starts. mockRandom forces the pick, so the rotation is exact.
+  // (Lesson 2 is locked in a fresh profile, so the rotation is proven
+  // by replaying lesson 1 — a fresh start picks again.)
+  const styles = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.styles', sandbox)));
+  console.log('styles:', JSON.stringify(styles));
+  assert.deepStrictEqual(styles, ['OPM lofi', 'Bossa café', 'Dreamy ambient', 'City pop', 'Rainy jazz'], 'there must be five styles');
+  mockRandom = 0; // style 0: OPM lofi
+  vm.runInContext('startLesson(1)', sandbox);
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'OPM lofi', 'mockRandom 0 must pick OPM lofi');
+  vm.runInContext(`go('home')`, sandbox);
+  mockRandom = 0.99; // style 4: Rainy jazz
+  vm.runInContext('startLesson(1)', sandbox);
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Rainy jazz', 'mockRandom 0.99 must pick Rainy jazz on a fresh start');
+  // Re-rendering the same first exercise must not re-pick the style.
+  vm.runInContext('renderExercise()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Rainy jazz', 'a re-render must not change the style mid-lesson');
 
   console.log('LESSON MUSIC: PASS');
   process.exit(0);
