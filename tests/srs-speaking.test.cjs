@@ -414,6 +414,38 @@ for (const f of order) {
     else assert.strictEqual(v, true, k + ' must be accepted');
   }
 
+  // ---- Reverse must reject the Tagalog word itself ----
+  // A reverse question shows the Tagalog and asks for the English, so
+  // typing the prompt word back must fail. (Brendan reported "kalsada"
+  // passing for "Translate: kalsada" — the correct answer is "street".)
+  // Lesson 34's reverse is items[4] = kalsada -> street.
+  const reverseTagalog = vm.runInContext(`
+    (function () {
+      for (let i = 1; i < 34; i++) state.completed[i] = { last: Date.now() };
+      startLesson(34);
+      const idx = session.exercises.findIndex((e) => e.type === 'reverse' && e.item && e.item.t === 'kalsada');
+      if (idx < 0) return { found: false };
+      index = idx;
+      renderExercise();
+      const ex = session.exercises[index];
+      const before = correct;
+      document.getElementById('answer').value = ex.item.t; // the Tagalog word itself
+      answerReverse();
+      const fb = document.getElementById('feedback');
+      return {
+        found: true, prompt: ex.prompt, itemT: ex.item.t, itemE: ex.item.e,
+        correctBefore: before, correctAfter: correct,
+        fbClass: fb && fb.className, fbText: fb && fb.textContent,
+      };
+    })()
+  `, sandbox);
+  console.log('reverse Tagalog word:', JSON.stringify(reverseTagalog));
+  assert.strictEqual(reverseTagalog.found, true, 'lesson 34 must have a reverse exercise for kalsada');
+  assert.strictEqual(reverseTagalog.prompt, 'Translate: kalsada', 'the reverse prompt must show the Tagalog word');
+  assert.strictEqual(reverseTagalog.correctAfter, reverseTagalog.correctBefore, 'typing the Tagalog word for a reverse question must not count as correct');
+  assert.ok(reverseTagalog.fbClass && reverseTagalog.fbClass.includes('bad'), 'typing the Tagalog word for a reverse question must be marked wrong');
+  assert.ok(reverseTagalog.fbText && reverseTagalog.fbText.includes('Correct answer: street'), 'the feedback must show the English answer');
+
   // ---- Speaking fallback: unsupported browser swaps to a written question ----
   const fallback = vm.runInContext(`
     (function () {
