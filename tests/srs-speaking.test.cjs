@@ -379,6 +379,41 @@ for (const f of order) {
   assert.strictEqual(speakTests.empty, false);
   assert.strictEqual(speakTests.supported, false, 'no SpeechRecognition in this vm, so fallback path is the one exercised');
 
+  // ---- Lenient matching: hyphens, bracket qualifiers, slashes ----
+  // A hyphen is the same as a space ("lola joli" for "lola-joli"), a
+  // parenthetical qualifier is ignored ("we" for "we (not you)"), and a
+  // slash means either side is correct ("he" or "she" for "he / she").
+  // Hyphens live in the Tagalog, so translate and speaking prove them
+  // through accepted(); brackets and slashes live in the English, so
+  // reverse proves them through norm() and its slash split.
+  const lenient = vm.runInContext(`
+    (function () {
+      return {
+        hyphen: accepted({ t: 'lola-joli' }, 'lola joli'),
+        hyphenSentence: accepted({ t: 'Nasa ospital si lola-joli.' }, 'Nasa ospital si lola joli'),
+        hyphenOther: accepted({ t: 'tita-baby' }, 'tita baby'),
+        bracketKami: norm('we') === norm('we (not you)'),
+        bracketTayo: norm('we') === norm('we (including you)'),
+        slashHe: accepted({ t: 'he / she' }, 'he'),
+        slashShe: accepted({ t: 'he / she' }, 'she'),
+        slashSick: accepted({ t: 'sickness / pain' }, 'sickness'),
+        slashPain: accepted({ t: 'sickness / pain' }, 'pain'),
+        slashCan: accepted({ t: 'can / may' }, 'can'),
+        reverseSlashHe: 'he / she'.split('/').map((s) => norm(s)).includes(norm('he')),
+        reverseSlashShe: 'he / she'.split('/').map((s) => norm(s)).includes(norm('she')),
+        reverseSlashMe: 'I / me'.split('/').map((s) => norm(s)).includes(norm('me')),
+        reverseBracket: norm('we') === norm('we (not you)'),
+        speakHyphen: speakAccepted('lola joli', { t: 'lola-joli', e: 'Grandma Joli' }),
+        wrongStillWrong: accepted({ t: 'lola-joli' }, 'lola maria'),
+      };
+    })()
+  `, sandbox);
+  console.log('lenient matching:', JSON.stringify(lenient));
+  for (const [k, v] of Object.entries(lenient)) {
+    if (k === 'wrongStillWrong') assert.strictEqual(v, false, k + ' must still fail');
+    else assert.strictEqual(v, true, k + ' must be accepted');
+  }
+
   // ---- Speaking fallback: unsupported browser swaps to a written question ----
   const fallback = vm.runInContext(`
     (function () {
