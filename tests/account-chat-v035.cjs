@@ -131,6 +131,21 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   assert.equal(codeRequests,0,'sync during an active lesson must not pop the Google prompt');
   assert.equal(reconcileCalls,reconcileBeforeRunning,'sync during an active lesson must not reconcile');
   c.running=false;
+  // Same, but with the running flag unset (the renderExercise wrapper
+  // chain can be shadowed, so running may be false even mid-lesson): an
+  // active lesson session alone must still block sync, or a background
+  // sync replaces state and calls go('home') mid-question — the kick-out
+  // that returned after v0.39.27 unblocked the sync.
+  c.session={id:16,exercises:[{type:'speak'},{type:'choice'}]};
+  c.index=0;
+  c.access='';c.expires=0;c.connecting=false;
+  refreshResult={access_token:'at-bob-5',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.appdata'};
+  fetchCalls=[];codeRequests=0;const reconcileBeforeSession=reconcileCalls;
+  await c.sync();await sleep(30);
+  assert.equal(fetchCalls.length,0,'sync during an active lesson session must not attempt a token renewal even when running is unset');
+  assert.equal(codeRequests,0,'sync during an active lesson session must not pop the Google prompt');
+  assert.equal(reconcileCalls,reconcileBeforeSession,'sync during an active lesson session must not reconcile');
+  c.session=null;c.index=0;
   // Erase guard with an expired Drive token: it must renew permission
   // (via connect) instead of refusing, and must not delete anything.
   const rpStart=source.indexOf('resetProgress=async function()');
@@ -147,5 +162,5 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   assert.equal(alerts.length,1);
   assert.ok(/renewing first/.test(alerts[0])&&/tap Erase learning progress again/.test(alerts[0]),'erase must tell the user to retry after connecting, got: '+alerts[0]);
   assert.equal(c.access,'','erase must not proceed without a token');
-  console.log('Checks passed: same-account permission retention, account-switch isolation, backend refresh-token renewal without a popup, code-flow exchange for first-time connect, returning-user no-auto-connect, silent-only renewal without a popup, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math, pending-reset token renewal without reconcile, erase guard renews instead of refusing, sync never interrupts an active lesson, abandoned-reset recovery clears the stale record and reconciles.');
+  console.log('Checks passed: same-account permission retention, account-switch isolation, backend refresh-token renewal without a popup, code-flow exchange for first-time connect, returning-user no-auto-connect, silent-only renewal without a popup, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math, pending-reset token renewal without reconcile, erase guard renews instead of refusing, sync never interrupts an active lesson, sync never interrupts an active lesson session even when running is unset, abandoned-reset recovery clears the stale record and reconciles.');
 })().catch(e=>{console.error(e);process.exitCode=1});
