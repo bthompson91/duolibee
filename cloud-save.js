@@ -72,7 +72,19 @@ function identity(r){
     id=r.credential;who={sub:claims.sub,email:String(claims.email||''),exp:claims.exp};
     try{sessionStorage.removeItem('duolibee-google-explicit-signout');}catch(_){}
     changed();
-    if(same){status('Signed in · Sync connected.');sync().catch(failure);}else connect();
+    if(same){status('Signed in · Sync connected.');sync().catch(failure);}
+    // A returning user whose Drive permission expired: do NOT pop the
+    // Google prompt here. identity() fires on app load (One Tap
+    // auto-select), and if a speaking question is asking for the
+    // microphone at the same time, the Google page navigates away and
+    // the mic request comes back denied, so the question flips to a
+    // written one. The background sync retries the token silently
+    // instead; reconnect from Settings ("Finish connecting") when
+    // convenient. Only a first-time Drive connection (no sync record
+    // for this account yet) still auto-connects, so setup stays one
+    // tap.
+    else if(meta[who.sub]&&(meta[who.sub].fileId||meta[who.sub].lastSync)){status('Signed in · Sync needs permission');}
+    else connect();
     if(view==='settings')renderSettings();
   }catch(e){connecting=false;failure(e);}
 }

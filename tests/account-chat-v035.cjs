@@ -7,7 +7,7 @@ let requests=0,syncs=0,events=0;const statusLog=[],prompts=[];
 const c={console,TextDecoder,Uint8Array,atob,Date,setTimeout,clearTimeout,
   CLIENT:'test-client',SCOPE:'openid email https://www.googleapis.com/auth/drive.appdata',
   id:'old-id',who:{sub:'alice',email:'alice@example.test',exp:Math.floor(Date.now()/1000)+3600},access:'existing-access',expires:Date.now()+3600000,
-  operation:1,busy:false,connecting:false,initialised:false,oauth:null,timer:null,view:'home',
+  operation:1,busy:false,connecting:false,initialised:false,oauth:null,timer:null,view:'home',meta:{},
   validId:()=>c.id,usable:()=>!!c.access&&Date.now()<c.expires,
   status:s=>statusLog.push(s),changed:()=>events++,renderSettings(){},
   failure:e=>{throw e},api:async()=>({sub:c.who.sub}),sync:async()=>{syncs++},
@@ -23,6 +23,27 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   c.identity(credential('bob'));assert.equal(c.access,'');assert.equal(requests,1);assert.deepEqual(prompts,['none']);assert.equal(c.connecting,true);
   c.oauth.error_callback();assert.equal(requests,2);assert.deepEqual(prompts,['none','']);assert.equal(c.connecting,true);
   c.oauth.error_callback();assert.equal(c.connecting,false);assert(c.id);assert.equal(c.who.sub,'bob');
+  // Returning Drive user (a sync record exists) whose token expired:
+  // identity() must NOT pop the Google prompt. It fires on app load
+  // (One Tap auto-select), and if a speaking question is asking for
+  // the microphone at the same time, the Google page navigates away
+  // and the mic request comes back denied, so the question flips to
+  // a written one. Background sync retries silently instead; the
+  // user reconnects from Settings.
+  c.meta={bob:{fileId:'file-1',synced:'{}',lastSync:Date.now()}};
+  const reqBeforeReturning=requests;
+  c.identity(credential('bob'));await Promise.resolve();
+  assert.equal(requests,reqBeforeReturning,'returning Drive user with an expired token must not auto-connect');
+  assert.equal(c.connecting,false);
+  assert.equal(statusLog[statusLog.length-1],'Signed in · Sync needs permission');
+  // First-time Drive connection (no sync record) still auto-connects.
+  c.meta={};c.access='';c.expires=0;
+  const reqBeforeFirst=requests;
+  c.identity(credential('bob'));await Promise.resolve();
+  assert.equal(requests,reqBeforeFirst+1,'first-time Drive connection must auto-connect');
+  assert.deepEqual(prompts.slice(-1),['none']);
+  c.oauth.error_callback();assert.equal(c.connecting,true);
+  c.oauth.error_callback();assert.equal(c.connecting,false);
   const before=c.operation;await c.drive({access_token:'stale',scope:'https://www.googleapis.com/auth/drive.appdata'},before-1,'alice');assert.equal(c.access,'');
   await c.drive({access_token:'missing-scope',scope:'openid email'},c.operation,'bob');assert.equal(c.access,'');assert(c.id);
   await c.drive({access_token:'good',scope:'openid email https://www.googleapis.com/auth/drive.appdata',expires_in:3600},c.operation,'bob');assert.equal(c.access,'good');assert.equal(syncs,2);
