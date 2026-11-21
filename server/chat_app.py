@@ -15,6 +15,8 @@ WEIGHTS=[.4,.25,.2,.15]
 MODEL='gemini-3.5-flash-lite'
 ORIGIN='https://bthompson91.github.io'
 CLIENT='953505436719-p73hfncc6p39481s6jaedj975l2a9rul.apps.googleusercontent.com'
+GOOGLE_TOKEN_URL='https://oauth2.googleapis.com/token'
+DRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata'
 BASE='https://raw.githubusercontent.com/bthompson91/duolibee/main/data/'
 MISSION={'id': 'introductions-midpoint', 'version': 1, 'title': 'Meet Lumpy', 'fictionalDetailsOnly': True, 'opening': 'Kumusta! Ano ang pangalan mo?', 'goals': [{'id': 'name', 'description': 'Introduce yourself using an invented name', 'prompt': 'Ano ang pangalan mo?', 'hints': ['Tell Lumpy your invented name in Tagalog.', 'Ako si...', 'Ako si Alex.']}, {'id': 'origin', 'description': 'State a fictional place of origin', 'prompt': 'Taga-saan ka?', 'hints': ['Say where your character is from in Tagalog.', 'Taga-... ako.', 'Taga-Australia ako.']}]}
 
@@ -123,7 +125,7 @@ def introduction_answer(text, goal):
     return ('Sa kuwento natin, taga-Pilipinas ako.' if gid=='origin' else 'Ako si Lumpy!'),gid,pure
 
 
-def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcriber=None,daily_limit=30,public_origin=None,google_client_id=None,identity_verifier=None,catalog_loader=None,account_daily_limit=10,shared_minute_limit=5,account_minute_limit=3):
+def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcriber=None,daily_limit=30,public_origin=None,google_client_id=None,identity_verifier=None,catalog_loader=None,account_daily_limit=10,shared_minute_limit=5,account_minute_limit=3,google_client_secret_path=None,token_exchanger=None):
     if token is None and public_origin is None and google_client_id is None:public_origin,google_client_id=ORIGIN,CLIENT
     if bool(public_origin)!=bool(google_client_id):raise ValueError('Incomplete public configuration')
     if any(type(v) is not int or v<1 for v in (daily_limit,account_daily_limit,shared_minute_limit,account_minute_limit)):raise ValueError('Invalid quota')
@@ -131,6 +133,23 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcribe
     state_dir=Path(state_dir or Path.home()/'.local/state/duolibee-chat');state_dir.mkdir(parents=True,exist_ok=True,mode=0o700);state_dir.chmod(0o700)
     db_path=state_dir/'chat.sqlite3';db_path.touch(mode=0o600,exist_ok=True);db_path.chmod(0o600)
     key_path=Path(key_path or Path.home()/'.config/duolibee-chat/gemini.key')
+    google_client_secret_path=Path(google_client_secret_path or Path.home()/'.config/duolibee-chat/google-oauth-client-secret')
+    def read_client_secret():
+        try:
+            secret=google_client_secret_path.read_text(encoding='utf-8').strip()
+            return secret or None
+        except OSError:
+            return None
+    def exchange_tokens(payload):
+        # payload: the form fields for Google's token endpoint. Returns the
+        # parsed JSON. Injectable (token_exchanger) so tests need no network.
+        if token_exchanger is not None:
+            return token_exchanger(payload)
+        r=requests.post(GOOGLE_TOKEN_URL,data=payload,timeout=(5,20))
+        try:
+            return r.json()
+        except ValueError:
+            return {'error':'invalid_response','error_description':'Google token endpoint returned a non-JSON response.'}
     if not public and not token:raise ValueError('Private test token required')
     app=Flask(__name__);app.config['MAX_CONTENT_LENGTH']=1048576;lock=threading.Lock();cache_lock=threading.Lock();cache={'loaded':0,'missions':None}
     @contextmanager
@@ -140,7 +159,7 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcribe
             with c:yield c
         finally:c.close()
     with db() as c:
-        c.executescript('CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,state TEXT NOT NULL,updated INTEGER NOT NULL);\nCREATE TABLE IF NOT EXISTS replies(session_id TEXT,request_id TEXT,fingerprint TEXT,result TEXT,PRIMARY KEY(session_id,request_id));\nCREATE TABLE IF NOT EXISTS usage(day TEXT PRIMARY KEY,total INTEGER NOT NULL);\nCREATE TABLE IF NOT EXISTS minutes(minute INTEGER PRIMARY KEY,total INTEGER NOT NULL);\nCREATE TABLE IF NOT EXISTS owners_v026(session_id TEXT PRIMARY KEY,subject TEXT NOT NULL);\nCREATE TABLE IF NOT EXISTS account_usage_v026(subject TEXT,day TEXT,total INTEGER NOT NULL,PRIMARY KEY(subject,day));\nCREATE TABLE IF NOT EXISTS account_minutes_v026(subject TEXT,minute INTEGER,total INTEGER NOT NULL,PRIMARY KEY(subject,minute));')
+        c.executescript('CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,state TEXT NOT NULL,updated INTEGER NOT NULL);\nCREATE TABLE IF NOT EXISTS replies(session_id TEXT,request_id TEXT,fingerprint TEXT,result TEXT,PRIMARY KEY(session_id,request_id));\nCREATE TABLE IF NOT EXISTS usage(day TEXT PRIMARY KEY,total INTEGER NOT NULL);\nCREATE TABLE IF NOT EXISTS minutes(minute INTEGER PRIMARY KEY,total INTEGER NOT NULL);\nCREATE TABLE IF NOT EXISTS owners_v026(session_id TEXT PRIMARY KEY,subject TEXT NOT NULL);\nCREATE TABLE IF NOT EXISTS account_usage_v026(subject TEXT,day TEXT,total INTEGER NOT NULL,PRIMARY KEY(subject,day));\nCREATE TABLE IF NOT EXISTS account_minutes_v026(subject TEXT,minute INTEGER,total INTEGER NOT NULL,PRIMARY KEY(subject,minute));\nCREATE TABLE IF NOT EXISTS oauth_refresh_tokens(subject TEXT PRIMARY KEY,refresh_token TEXT NOT NULL,updated INTEGER NOT NULL);')
     def catalog():
         with cache_lock:
             now=time.time()
@@ -185,7 +204,7 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcribe
             if origin and origin!=public_origin:return fail('Origin rejected.',403)
             if request.method=='OPTIONS':
                 hs={x.strip().lower() for x in request.headers.get('Access-Control-Request-Headers','').split(',') if x.strip()}
-                if origin!=public_origin or request.headers.get('Access-Control-Request-Method') not in ('GET','POST','DELETE','OPTIONS') or hs-{'authorization','content-type'}:return fail('Preflight rejected.',403)
+                if origin!=public_origin or request.headers.get('Access-Control-Request-Method') not in ('GET','POST','DELETE','OPTIONS') or hs-{'authorization','content-type','x-requested-with'}:return fail('Preflight rejected.',403)
                 return '',204
             if request.path=='/transcribe':return None
             raw=request.headers.get('Authorization','')
@@ -203,7 +222,7 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcribe
     def headers(response):
         response.headers['Cache-Control']='no-store';response.headers['X-Content-Type-Options']='nosniff'
         if public and request.headers.get('Origin')==public_origin:
-            response.headers['Access-Control-Allow-Origin']=public_origin;response.headers['Vary']='Origin';response.headers['Access-Control-Allow-Methods']='GET,POST,DELETE,OPTIONS';response.headers['Access-Control-Allow-Headers']='authorization,content-type'
+            response.headers['Access-Control-Allow-Origin']=public_origin;response.headers['Vary']='Origin';response.headers['Access-Control-Allow-Methods']='GET,POST,DELETE,OPTIONS';response.headers['Access-Control-Allow-Headers']='authorization,content-type,x-requested-with'
         return response
     @app.errorhandler(413)
     def too_large(_):return fail('Request too large.',413)
@@ -234,6 +253,52 @@ def create_app(state_dir=None,key_path=None,token=None,evaluator=None,transcribe
         try:transcript=(transcriber or transcribe_audio)(key_path,audio,mime)
         except ProviderError as error:return fail(error.kind,502)
         return jsonify(transcript=transcript)
+    # ---- Google Drive backup: authorization-code flow (refresh tokens) ----
+    # The frontend uses Google's code flow (popup), so the browser gets a
+    # one-time code, not a token. The code is exchanged here for an access
+    # token + refresh token; the refresh token is stored per user (by the
+    # Google subject from the verified ID token) and used to mint fresh
+    # 1-hour access tokens silently, so the user is not asked to log in
+    # every hour. The refresh token lives only in this server's state
+    # directory (0600 SQLite) and only ever grants drive.appdata (the
+    # app's own hidden backup folder), never the user's real Drive files.
+    @app.post('/auth/exchange')
+    def auth_exchange():
+        if not public:return fail('Not available.',404)
+        if request.headers.get('X-Requested-With')!='XmlHttpRequest':return fail('Missing CSRF header.',403)
+        body=request.get_json(silent=True)
+        code=body.get('code') if isinstance(body,dict) else None
+        if not isinstance(code,str) or not 1<=len(code)<=512:return fail('Invalid authorization code.',400)
+        secret=read_client_secret()
+        if not secret:return fail('Google Drive backup is not configured on this server.',503)
+        try:result=exchange_tokens({'code':code,'client_id':CLIENT,'client_secret':secret,'redirect_uri':public_origin,'grant_type':'authorization_code'})
+        except Exception:return fail('Google token exchange failed.',502)
+        if not isinstance(result,dict) or 'access_token' not in result:return fail('Google token exchange failed: '+str(result.get('error','unknown') if isinstance(result,dict) else 'unknown'),502)
+        scope=str(result.get('scope',''))
+        if scope and DRIVE_SCOPE not in scope.split():return fail('Google did not grant Drive backup permission.',403)
+        refresh=result.get('refresh_token')
+        if isinstance(refresh,str) and refresh:
+            with db() as c:c.execute('INSERT INTO oauth_refresh_tokens VALUES (?,?,?) ON CONFLICT(subject) DO UPDATE SET refresh_token=excluded.refresh_token,updated=excluded.updated',(g.subject,refresh,int(time.time())))
+        return jsonify(access_token=result['access_token'],expires_in=result.get('expires_in',3600),scope=scope)
+    @app.post('/auth/refresh')
+    def auth_refresh():
+        if not public:return fail('Not available.',404)
+        secret=read_client_secret()
+        if not secret:return fail('Google Drive backup is not configured on this server.',503)
+        with db() as c:row=c.execute('SELECT refresh_token FROM oauth_refresh_tokens WHERE subject=?',(g.subject,)).fetchone()
+        if not row:return fail('No stored Drive permission; reconnect Google Drive.',401)
+        try:result=exchange_tokens({'client_id':CLIENT,'client_secret':secret,'refresh_token':row[0],'grant_type':'refresh_token'})
+        except Exception:return fail('Google token refresh failed.',502)
+        if not isinstance(result,dict) or 'access_token' not in result:
+            err=str(result.get('error','') if isinstance(result,dict) else '')
+            if err=='invalid_grant':
+                with db() as c:c.execute('DELETE FROM oauth_refresh_tokens WHERE subject=?',(g.subject,))
+                return fail('Drive permission expired; reconnect Google Drive.',401)
+            return fail('Google token refresh failed: '+(err or 'unknown'),502)
+        refresh=result.get('refresh_token')
+        if isinstance(refresh,str) and refresh:
+            with db() as c:c.execute('INSERT INTO oauth_refresh_tokens VALUES (?,?,?) ON CONFLICT(subject) DO UPDATE SET refresh_token=excluded.refresh_token,updated=excluded.updated',(g.subject,refresh,int(time.time())))
+        return jsonify(access_token=result['access_token'],expires_in=result.get('expires_in',3600),scope=str(result.get('scope','')))
     @app.post('/sessions')
     def start():
         body=request.get_json(silent=True)
