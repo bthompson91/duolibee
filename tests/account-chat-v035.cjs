@@ -10,7 +10,7 @@ let codeConfig=null,codeRequests=0;
 const c={console,TextDecoder,Uint8Array,atob,Date,setTimeout,clearTimeout,
   CLIENT:'test-client',SCOPE:'openid email https://www.googleapis.com/auth/drive.appdata',AUTH_API:'https://test.invalid/duolibee/chat/auth',
   id:'old-id',who:{sub:'alice',email:'alice@example.test',exp:Math.floor(Date.now()/1000)+3600},access:'existing-access',expires:Date.now()+3600000,
-  operation:1,busy:false,connecting:false,initialised:false,oauth:null,timer:null,view:'home',meta:{},
+  operation:1,busy:false,running:false,connecting:false,initialised:false,oauth:null,timer:null,view:'home',meta:{},
   validId:()=>c.id,usable:()=>!!c.access&&Date.now()<c.expires,
   status:s=>statusLog.push(s),changed:()=>events++,renderSettings(){},
   failure:e=>{throw e},api:async()=>({sub:c.who.sub}),sync:async()=>{syncs++},
@@ -104,6 +104,19 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   c.resets={};
   await c.sync();
   assert.equal(reconcileCalls,1,'sync without a pending reset must reconcile');
+  // Active lesson (running): sync must not start at all — no token
+  // renewal, no reconcile — so a background sync can never replace state
+  // and call go('home') mid-question, kicking the user out of a lesson
+  // (notably a speaking question, where the mic is live) or surface a
+  // Google prompt. The backup waits until the lesson ends.
+  c.running=true;c.access='';c.expires=0;c.connecting=false;
+  refreshResult={access_token:'at-bob-4',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.appdata'};
+  fetchCalls=[];codeRequests=0;const reconcileBeforeRunning=reconcileCalls;
+  await c.sync();await sleep(30);
+  assert.equal(fetchCalls.length,0,'sync during an active lesson must not attempt a token renewal');
+  assert.equal(codeRequests,0,'sync during an active lesson must not pop the Google prompt');
+  assert.equal(reconcileCalls,reconcileBeforeRunning,'sync during an active lesson must not reconcile');
+  c.running=false;
   // Erase guard with an expired Drive token: it must renew permission
   // (via connect) instead of refusing, and must not delete anything.
   const rpStart=source.indexOf('resetProgress=async function()');
@@ -120,5 +133,5 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   assert.equal(alerts.length,1);
   assert.ok(/renewing first/.test(alerts[0])&&/tap Erase learning progress again/.test(alerts[0]),'erase must tell the user to retry after connecting, got: '+alerts[0]);
   assert.equal(c.access,'','erase must not proceed without a token');
-  console.log('Checks passed: same-account permission retention, account-switch isolation, backend refresh-token renewal without a popup, code-flow exchange for first-time connect, returning-user no-auto-connect, silent-only renewal without a popup, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math, pending-reset token renewal without reconcile, erase guard renews instead of refusing.');
+  console.log('Checks passed: same-account permission retention, account-switch isolation, backend refresh-token renewal without a popup, code-flow exchange for first-time connect, returning-user no-auto-connect, silent-only renewal without a popup, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math, pending-reset token renewal without reconcile, erase guard renews instead of refusing, sync never interrupts an active lesson.');
 })().catch(e=>{console.error(e);process.exitCode=1});
