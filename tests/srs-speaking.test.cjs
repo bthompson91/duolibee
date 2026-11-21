@@ -1272,10 +1272,13 @@ for (const f of order) {
       }
       // A word with no clip in the asked-for character falls back to the
       // lesson host's clip instead of the (silent, on a phone) system voice.
-      const createdBeforeFallback = __audioCreated.length;
+      // Playback reuses one shared <audio> element, so the fallback is
+      // verified by a play happening (not a new element being created).
+      const playedBeforeFallback = __audioPlayed.length;
       duolibeeLessonAudio.play('Kumusta', false, false, 'tita-baby');
-      out.fallbackHostCreated = __audioCreated.length - createdBeforeFallback;
+      out.fallbackHostPlayed = __audioPlayed.length - playedBeforeFallback;
       out.fallbackHostSrc = __audioCreated.length ? __audioCreated[__audioCreated.length - 1].src : null;
+      out.audioElementsCreated = __audioCreated.length;
       out.fileBuildWord = duolibeeLessonAudio.fileFor(__buildWords[1], __buildSpeaker);
       return out;
     })()
@@ -1294,8 +1297,9 @@ for (const f of order) {
   assert.ok(audio.buildIdx >= 0, 'lesson 1 has a build exercise');
   assert.strictEqual(audio.buildChar, audio.buildSpeaker, 'a build word resolves to the sentence speaker, got ' + audio.buildChar);
   assert.strictEqual(audio.tokenSrc, 'assets/audio/lesson1buildword2.mp3', 'tapping a build word plays its file, got ' + audio.tokenSrc);
-  assert.strictEqual(audio.fallbackHostCreated, 1, 'a missing speaker clip falls back to the host clip instead of the system voice');
+  assert.strictEqual(audio.fallbackHostPlayed, 1, 'a missing speaker clip falls back to the host clip instead of the system voice');
   assert.strictEqual(audio.fallbackHostSrc, 'assets/audio/aaa111.mp3', 'the host fallback plays the host file, got ' + audio.fallbackHostSrc);
+  assert.strictEqual(audio.audioElementsCreated, 1, 'all recorded clips reuse one shared <audio> element instead of a new one per clip, got ' + audio.audioElementsCreated);
   assert.strictEqual(audio.hostChar, 'lumpy', 'word in lesson 1 uses the host (Lumpy), got ' + audio.hostChar);
   assert.strictEqual(audio.sentenceTextChar, audio.sentenceTextSpeaker, 'a sentence in the theme resolves to its speaker');
   assert.ok(audio.hasSentenceSpeaker, 'lesson 1 has a sentence exercise with a speaker');

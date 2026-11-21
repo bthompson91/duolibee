@@ -156,13 +156,22 @@
   function stopAudioFile() {
     try { if (activeAudio) { activeAudio.pause(); activeAudio = null; } } catch (e) { activeAudio = null; }
   }
+  // One shared <audio> element for every recorded clip. A new Audio() per
+  // clip makes the browser (notably iOS Safari) set up and tear down a
+  // fresh media pipeline each time — open, play, close, open again — which
+  // is the sluggishness. Reusing one element keeps the audio session warm
+  // so the next clip starts immediately. Only one clip plays at a time
+  // (stopAudioFile pauses the previous one first), so sharing is safe.
+  let sharedAudio = null;
   function playAudioFile(file, slow) {
     try {
       stopAudioFile();
       if (window.speechSynthesis) speechSynthesis.cancel();
-      const a = new Audio('assets/audio/' + file);
+      if (!sharedAudio) { sharedAudio = new Audio(); sharedAudio.preload = 'auto'; }
+      const a = sharedAudio;
+      a.src = 'assets/audio/' + file;
+      a.playbackRate = slow ? 0.62 : 1;
       activeAudio = a;
-      if (slow) a.playbackRate = 0.62;
       a.onplaying = () => { if (activeAudio === a) { hook('duolibeeSpeechStart'); status('Playing recorded audio.'); } };
       a.onended = () => { if (activeAudio === a) { activeAudio = null; hook('duolibeeSpeechEnd'); status('Playback complete.'); } };
       a.onerror = () => { if (activeAudio === a) { activeAudio = null; hook('duolibeeSpeechEnd'); status('Recorded audio failed to play.'); } };
