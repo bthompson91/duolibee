@@ -678,6 +678,21 @@ function musicState() {
   volSlider.oninput();
   vm.runInContext('window.duolibeeMusic.stopPreview()', sandbox);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'the slider preview must be stopped again before the preview rows are checked');
+  // iOS does not reliably count a range-slider `input` event as the
+  // user gesture that unlocks audio, so the preview must also start
+  // from definite gestures: touching the slider, and releasing it.
+  // (Regression: the v0.90.3 fix only used `input`, and on a real
+  // iPhone the preview never started, so the slider still seemed to
+  // do nothing.) Each gesture must start a Lumpy preview, playing.
+  for (const gesture of ['onpointerdown', 'ontouchstart', 'onchange']) {
+    vm.runInContext('window.duolibeeMusic.stopPreview()', sandbox);
+    assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'the preview must be stopped before testing ' + gesture);
+    volSlider[gesture]();
+    assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'lumpy', gesture + ' on the slider must start a preview of the default host');
+    assert.strictEqual(musicEl().paused, false, gesture + ' on the slider must start the preview playing');
+    assert.strictEqual(musicEl().src, 'assets/music/lumpy.mp3', gesture + ' on the slider must load the default host track');
+  }
+  vm.runInContext('window.duolibeeMusic.stopPreview()', sandbox);
   // The preview section lists all six characters with their track and
   // a play button. (The mock's getElementById always returns an
   // element, so assert on the built section's children instead.)

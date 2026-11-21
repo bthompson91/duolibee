@@ -545,6 +545,15 @@
       // At 0 the preview is silent (targetVolume 0 pauses the element).
       if (!previewHost) previewFor(DEFAULT_HOST);
     };
+    // iOS Safari does not reliably count a range-slider `input` event
+    // as the user gesture that unlocks audio playback, so a preview
+    // started only from `oninput` can have its play() refused and
+    // never be heard. Start it from definite gestures too: the touch
+    // that begins the drag, and the release that ends it. All three
+    // are guarded by `!previewHost`, so only the first one starts it.
+    volSlider.onpointerdown = () => { if (!previewHost) previewFor(DEFAULT_HOST); };
+    volSlider.ontouchstart = () => { if (!previewHost) previewFor(DEFAULT_HOST); };
+    volSlider.onchange = () => { if (!previewHost) previewFor(DEFAULT_HOST); };
     volLabel.append(document.createTextNode(' Music volume '), volSlider, volPct);
     const volNote = document.createElement('span');
     volNote.className = 'setting-note';
