@@ -20,12 +20,17 @@
     if (button.textContent !== icon) button.textContent = icon;
     if (button.title !== title) button.title = title;
   }
+  function lessonActive() {
+    try {
+      return typeof session !== 'undefined' && !!session && Array.isArray(session.exercises) && typeof index === 'number' && index < session.exercises.length;
+    } catch (_) { return false; }
+  }
   function toggleMute() {
     state.settings.muted = !muted();
     save();
     if (muted() && window.speechSynthesis) speechSynthesis.cancel();
     renderMuteButton();
-    if (view === 'home') renderHome();
+    if (view === 'home' && !lessonActive()) renderHome();
   }
   const originalSpeak = speak;
   speak = function(text, slow) {
