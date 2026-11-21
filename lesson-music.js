@@ -9,17 +9,22 @@
 // host character's style, so the background matches who is teaching:
 //   * OPM lofi — Lumpy: 72 BPM, Cmaj7-Am7-Fmaj7-G7, swung beat,
 //     vinyl crackle, a sparse pentatonic melody.
-//   * Bossa café — Tita Baby: 84 BPM, a jazzy Dm7-G7-Cmaj9-Fmaj9,
-//     a bossa bass pulse and a shaker-like hat.
-//   * Dreamy ambient — Lola Joli: 60 BPM, no drums at all: slow
-//     Am9-Fmaj9-Cmaj9-G6 pads with a few high music-box sparkles.
-//   * City pop — Tito Bong: 96 BPM, a bright bouncy C-G-Am-F,
-//     four-on-the-floor kick and a busier glockenspiel-like melody.
-//   * Rainy jazz — Ate Crystal: 66 BPM, a Cmaj7-A7-Dm7-G7
-//     turnaround, swung ride, walking bass, brush snare.
-//   * Playful bounce — Jetjet: 120 BPM, a bright C-F-Dm-G,
-//     four-on-the-floor kick and a busy plucky melody with a
-//     syncopated bass, fast and bouncy like a Beyblade battle.
+//   * Love ballad — Tita Baby: 60 BPM, a lush Fmaj7-Dm7-Bbmaj7-C7,
+//     no drums at all: slow piano-like chords, a long emotional
+//     melody.
+//   * Folk rondalla — Lola Joli: 88 BPM, a gentle C-Am-F-G, lilting
+//     swing, a plucked stepwise melody, a light two-beat pulse.
+//   * Arena rock — Tito Bong: 120 BPM, a big D-A-Bm-G, driving
+//     four-on-the-floor kick, a soaring long melody.
+//   * Pop punk — Ate Crystal: 136 BPM, a punchy A-C-D-E, a driving
+//     eighth-note melody, punchy drums.
+//   * Brainrot hyperpop — Jetjet: 150 BPM, a bright C-G-Bb-F,
+//     four-on-the-floor kick, a hat on every 16th, a rapid glitchy
+//     melody that jumps around.
+//
+// All six are original compositions in each genre's idiom — they
+// evoke the feel, they do not reproduce any song's melody or
+// note-for-note progression.
 //
 // Behaviour:
 //   * Starts when a lesson starts (a tap, so iOS allows the audio),
@@ -69,84 +74,84 @@
       kick: [0, 8, 10], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], bass: [0, 8],
     },
     {
-      name: 'Bossa café', bpm: 84, swing: 0.10, crackle: true,
+      name: 'Love ballad', bpm: 60, swing: 0, crackle: false,
       chords: [
-        { name: 'Dm7', pad: [62, 65, 69, 72], bass: 38 },
-        { name: 'G7', pad: [59, 62, 65, 69], bass: 43 },
-        { name: 'Cmaj9', pad: [60, 64, 67, 74], bass: 48 },
-        { name: 'Fmaj9', pad: [65, 69, 72, 79], bass: 41 },
+        { name: 'Fmaj7', pad: [53, 57, 60, 64], bass: 41 },
+        { name: 'Dm7', pad: [50, 53, 57, 60], bass: 38 },
+        { name: 'Bbmaj7', pad: [46, 50, 53, 57], bass: 46 },
+        { name: 'C7', pad: [48, 52, 55, 58], bass: 48 },
       ],
       melody: [
-        [0, 0, 74, 3], [0, 8, 76, 2], [0, 12, 79, 4],
-        [1, 0, 77, 3], [1, 8, 76, 2], [1, 12, 74, 4],
-        [2, 0, 72, 3], [2, 8, 74, 2], [2, 12, 76, 4],
-        [3, 0, 79, 3], [3, 8, 77, 2], [3, 12, 74, 4],
-      ],
-      kick: [0, 8], snare: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], bass: [0, 10],
-    },
-    {
-      name: 'Dreamy ambient', bpm: 60, swing: 0, crackle: false,
-      chords: [
-        { name: 'Am9', pad: [57, 60, 64, 71], bass: 45 },
-        { name: 'Fmaj9', pad: [65, 69, 72, 79], bass: 41 },
-        { name: 'Cmaj9', pad: [60, 64, 67, 74], bass: 48 },
-        { name: 'G6', pad: [59, 62, 64, 67], bass: 43 },
-      ],
-      melody: [
-        [0, 0, 84, 8],
-        [1, 8, 81, 8],
-        [2, 0, 79, 8],
-        [3, 8, 84, 8],
+        [0, 0, 77, 4], [0, 8, 81, 4],
+        [1, 0, 79, 4], [1, 8, 77, 4],
+        [2, 0, 76, 4], [2, 8, 77, 4],
+        [3, 0, 79, 4], [3, 8, 74, 8],
       ],
       kick: [], snare: [], hat: [], bass: [0],
     },
     {
-      name: 'City pop', bpm: 96, swing: 0.05, crackle: false,
+      name: 'Folk rondalla', bpm: 88, swing: 0.10, crackle: false,
       chords: [
-        { name: 'C', pad: [60, 64, 67, 72], bass: 48 },
-        { name: 'G', pad: [59, 62, 67, 71], bass: 43 },
-        { name: 'Am', pad: [57, 60, 64, 69], bass: 45 },
-        { name: 'F', pad: [53, 57, 60, 65], bass: 41 },
+        { name: 'C', pad: [60, 64, 67], bass: 48 },
+        { name: 'Am', pad: [57, 60, 64], bass: 45 },
+        { name: 'F', pad: [53, 57, 60], bass: 41 },
+        { name: 'G', pad: [55, 59, 62], bass: 43 },
       ],
       melody: [
-        [0, 0, 76, 2], [0, 4, 79, 2], [0, 8, 81, 2], [0, 12, 79, 2],
-        [1, 0, 76, 2], [1, 4, 74, 2], [1, 8, 76, 2], [1, 12, 79, 4],
-        [2, 0, 81, 2], [2, 4, 79, 2], [2, 8, 76, 2], [2, 12, 74, 2],
-        [3, 0, 76, 2], [3, 4, 79, 2], [3, 8, 81, 2], [3, 12, 84, 4],
+        [0, 0, 72, 2], [0, 4, 76, 2], [0, 8, 79, 2], [0, 12, 76, 2],
+        [1, 0, 74, 2], [1, 4, 72, 2], [1, 8, 74, 2], [1, 12, 76, 2],
+        [2, 0, 77, 2], [2, 4, 76, 2], [2, 8, 74, 2], [2, 12, 72, 2],
+        [3, 0, 74, 2], [3, 4, 71, 2], [3, 8, 72, 4],
+      ],
+      kick: [0, 8], snare: [], hat: [0, 4, 8, 12], bass: [0, 8],
+    },
+    {
+      name: 'Arena rock', bpm: 120, swing: 0, crackle: false,
+      chords: [
+        { name: 'D', pad: [50, 57, 62], bass: 38 },
+        { name: 'A', pad: [45, 52, 57], bass: 45 },
+        { name: 'Bm', pad: [47, 54, 59], bass: 47 },
+        { name: 'G', pad: [43, 50, 55], bass: 43 },
+      ],
+      melody: [
+        [0, 0, 74, 4], [0, 8, 78, 4],
+        [1, 0, 76, 4], [1, 8, 81, 4],
+        [2, 0, 79, 4], [2, 8, 78, 4],
+        [3, 0, 74, 4], [3, 8, 71, 4],
       ],
       kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], bass: [0, 4, 8, 12],
     },
     {
-      name: 'Rainy jazz', bpm: 66, swing: 0.15, crackle: true,
+      name: 'Pop punk', bpm: 136, swing: 0, crackle: false,
       chords: [
-        { name: 'Cmaj7', pad: [60, 64, 67, 71], bass: 48 },
-        { name: 'A7', pad: [57, 61, 64, 67], bass: 45 },
-        { name: 'Dm7', pad: [62, 65, 69, 72], bass: 38 },
-        { name: 'G7', pad: [55, 59, 62, 65], bass: 43 },
+        { name: 'A', pad: [45, 52, 57], bass: 45 },
+        { name: 'C', pad: [48, 55, 60], bass: 48 },
+        { name: 'D', pad: [50, 57, 62], bass: 38 },
+        { name: 'E', pad: [52, 59, 64], bass: 40 },
       ],
       melody: [
-        [0, 0, 76, 3], [0, 8, 79, 2], [0, 12, 81, 4],
-        [1, 0, 76, 3], [1, 8, 73, 2], [1, 12, 76, 4],
-        [2, 0, 77, 3], [2, 8, 81, 2], [2, 12, 77, 4],
-        [3, 0, 79, 3], [3, 8, 74, 2], [3, 12, 77, 4],
+        [0, 0, 76, 2], [0, 4, 77, 2], [0, 8, 76, 2], [0, 12, 74, 2],
+        [1, 0, 79, 2], [1, 4, 77, 2], [1, 8, 76, 2], [1, 12, 74, 2],
+        [2, 0, 78, 2], [2, 4, 79, 2], [2, 8, 81, 2], [2, 12, 79, 2],
+        [3, 0, 78, 2], [3, 4, 76, 2], [3, 8, 74, 2], [3, 12, 76, 4],
       ],
-      kick: [0], snare: [4, 12], hat: [0, 4, 8, 12], bass: [0, 4, 8, 12],
+      kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], bass: [0, 4, 8, 12],
     },
     {
-      name: 'Playful bounce', bpm: 120, swing: 0.06, crackle: false,
+      name: 'Brainrot hyperpop', bpm: 150, swing: 0, crackle: false,
       chords: [
-        { name: 'C', pad: [60, 64, 67, 72], bass: 48 },
-        { name: 'F', pad: [53, 57, 60, 65], bass: 41 },
-        { name: 'Dm', pad: [62, 65, 69, 72], bass: 38 },
-        { name: 'G', pad: [59, 62, 67, 71], bass: 43 },
+        { name: 'C', pad: [60, 64, 67], bass: 48 },
+        { name: 'G', pad: [55, 59, 62], bass: 43 },
+        { name: 'Bb', pad: [58, 62, 65], bass: 46 },
+        { name: 'F', pad: [53, 57, 60], bass: 41 },
       ],
       melody: [
-        [0, 0, 79, 1], [0, 2, 81, 1], [0, 4, 84, 2], [0, 8, 81, 1], [0, 10, 79, 1], [0, 12, 76, 2],
-        [1, 0, 77, 1], [1, 2, 79, 1], [1, 4, 81, 2], [1, 8, 84, 1], [1, 10, 81, 1], [1, 12, 79, 2],
-        [2, 0, 84, 1], [2, 2, 81, 1], [2, 4, 79, 2], [2, 8, 76, 1], [2, 10, 79, 1], [2, 12, 81, 2],
-        [3, 0, 79, 1], [3, 2, 81, 1], [3, 4, 84, 2], [3, 8, 86, 1], [3, 10, 84, 1], [3, 12, 81, 4],
+        [0, 0, 84, 1], [0, 2, 79, 1], [0, 4, 86, 1], [0, 6, 81, 1], [0, 8, 84, 1], [0, 10, 79, 1], [0, 12, 86, 1], [0, 14, 81, 1],
+        [1, 0, 83, 1], [1, 2, 79, 1], [1, 4, 86, 1], [1, 6, 83, 1], [1, 8, 79, 1], [1, 10, 86, 1], [1, 12, 83, 1], [1, 14, 79, 1],
+        [2, 0, 82, 1], [2, 2, 77, 1], [2, 4, 84, 1], [2, 6, 82, 1], [2, 8, 77, 1], [2, 10, 84, 1], [2, 12, 82, 1], [2, 14, 77, 1],
+        [3, 0, 84, 1], [3, 2, 81, 1], [3, 4, 86, 1], [3, 6, 84, 1], [3, 8, 81, 1], [3, 10, 86, 1], [3, 12, 84, 1], [3, 14, 89, 2],
       ],
-      kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], bass: [0, 6, 8, 14],
+      kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], bass: [0, 4, 8, 12],
     },
   ];
 
@@ -156,11 +161,19 @@
   // and fall back to the OPM lofi default.
   const HOST_STYLE = {
     'lumpy': 'OPM lofi',
-    'tito-bong': 'City pop',
-    'ate-crystal': 'Rainy jazz',
-    'jetjet': 'Playful bounce',
-    'lola-joli': 'Dreamy ambient',
-    'tita-baby': 'Bossa café',
+    'tito-bong': 'Arena rock',
+    'ate-crystal': 'Pop punk',
+    'jetjet': 'Brainrot hyperpop',
+    'lola-joli': 'Folk rondalla',
+    'tita-baby': 'Love ballad',
+  };
+  const CHARACTER_NAMES = {
+    'lumpy': 'Lumpy',
+    'tito-bong': 'Tito Bong',
+    'ate-crystal': 'Ate Crystal',
+    'jetjet': 'Jetjet',
+    'lola-joli': 'Lola Joli',
+    'tita-baby': 'Tita Baby',
   };
 
   let ctx = null;
@@ -184,6 +197,13 @@
   // re-rendering the first exercise does not re-pick.
   let currentStyle = null;
   let wasInLesson = false;
+  // The host whose style is being previewed in Settings, or null.
+  // A preview plays outside a lesson, through the same engine, and
+  // stops when the user leaves Settings or starts a lesson.
+  let previewHost = null;
+  // The preview buttons, rebuilt on every Settings render (host ->
+  // button element), so their Play/Stop labels can follow the state.
+  let previewButtons = {};
 
   function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
   function stepSec() { return 60 / (currentStyle ? currentStyle.bpm : 72) / 4; }
@@ -216,7 +236,12 @@
     return t === 'audio' || t === 'speak';
   }
   function targetGain() {
-    if (!musicOn() || muted() || !lessonActive()) return 0;
+    if (muted()) return 0;
+    // A preview is a deliberate listen: it plays at full volume even
+    // if the lesson-music toggle is off. The toggle still controls
+    // whether music plays during lessons.
+    if (previewHost) return NORMAL_GAIN;
+    if (!musicOn() || !lessonActive()) return 0;
     return shouldDuck() ? DUCK_GAIN : NORMAL_GAIN;
   }
 
@@ -279,6 +304,79 @@
       try { crackleGain.gain.value = currentStyle.crackle ? 0.012 : 0; } catch (e) { /* ignore */ }
     }
     return currentStyle;
+  }
+
+  // ---- Settings preview ----
+  // Play one character's style outside a lesson, through the same
+  // engine. Only one preview plays at a time; it plays even if the
+  // lesson-music toggle is off (it is a deliberate listen), and it
+  // stops when the user leaves Settings or starts a lesson.
+  function previewFor(host) {
+    if (!HOST_STYLE[host]) return false;
+    if (lessonActive()) return false;
+    const s = STYLES.find((x) => x.name === HOST_STYLE[host]);
+    if (!s) return false;
+    if (!ensureCtx()) return false;
+    if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch (e) { /* ignore */ } }
+    currentStyle = s;
+    previewHost = host;
+    if (crackleGain) {
+      try { crackleGain.gain.value = s.crackle ? 0.012 : 0; } catch (e) { /* ignore */ }
+    }
+    nextStep = 0;
+    nextTime = ctx.currentTime + 0.1;
+    if (timer == null) timer = setInterval(tick, 100);
+    refreshPreviewButtons();
+    applyGain();
+    return true;
+  }
+  function togglePreview(host) {
+    if (previewHost === host) { stopPreview(); return; }
+    previewFor(host);
+  }
+  function stopPreview() {
+    if (!previewHost) return;
+    previewHost = null;
+    refreshPreviewButtons();
+    applyGain();
+  }
+  function refreshPreviewButtons() {
+    for (const host of Object.keys(previewButtons)) {
+      const btn = previewButtons[host];
+      if (btn) btn.textContent = (previewHost === host) ? '⏸ Stop' : '▶ Play';
+    }
+  }
+  // The preview section, rebuilt on every Settings render so the
+  // Play/Stop labels always match the current preview state.
+  function buildPreviewSection(card) {
+    const old = document.getElementById('music-preview');
+    if (old && typeof old.remove === 'function') old.remove();
+    const section = document.createElement('div');
+    section.className = 'music-preview';
+    section.id = 'music-preview';
+    const title = document.createElement('h3');
+    title.textContent = 'Character music';
+    section.append(title);
+    const note = document.createElement('p');
+    note.className = 'setting-note';
+    note.textContent = 'Hear each character\'s style without starting a lesson. Tap play to listen; tap again to stop.';
+    section.append(note);
+    previewButtons = {};
+    for (const host of Object.keys(HOST_STYLE)) {
+      const row = document.createElement('div');
+      row.className = 'setting-row music-preview-row';
+      const name = document.createElement('span');
+      name.textContent = CHARACTER_NAMES[host] + ' — ' + HOST_STYLE[host];
+      const btn = document.createElement('button');
+      btn.className = 'ghost music-preview-btn';
+      btn.id = 'music-preview-' + host;
+      btn.textContent = (previewHost === host) ? '⏸ Stop' : '▶ Play';
+      btn.onclick = () => { togglePreview(host); };
+      row.append(name, btn);
+      section.append(row);
+      previewButtons[host] = btn;
+    }
+    card.append(section);
   }
 
   // ---- Instruments (all scheduled ahead of time) ----
@@ -402,7 +500,10 @@
       if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
     } catch (e) { /* not yet allowed; a later tap will resume it */ }
     applyGain();
-    if (!lessonActive() || !musicOn() || muted() || !currentStyle) return;
+    // The scheduler runs for lesson music, or for a preview (which
+    // plays outside a lesson and ignores the lesson-music toggle).
+    const active = previewHost ? !muted() : (lessonActive() && musicOn() && !muted());
+    if (!active || !currentStyle) return;
     while (nextTime < ctx.currentTime + 0.3) {
       scheduleStep(nextStep, stepTime(nextStep, nextTime));
       nextTime += stepSec();
@@ -417,6 +518,9 @@
       wasInLesson = false;
       return;
     }
+    // A lesson started: stop any preview so it cannot clash with the
+    // lesson's own music.
+    if (previewHost) stopPreview();
     if (!ensureCtx()) return;
     if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch (e) { /* ignore */ } }
     // A lesson has started when we are on its first exercise and we
@@ -461,6 +565,9 @@
   go = function (...args) {
     const r = originalGo(...args);
     inLessonView = false;
+    // Leaving Settings stops a preview — it must never keep playing
+    // on another screen or clash with lesson music.
+    if (typeof view === 'undefined' || view !== 'settings') stopPreview();
     updateMusic();
     return r;
   };
@@ -475,26 +582,30 @@
     };
   }
 
-  // Settings toggle, next to the speaking and Whisper toggles.
+  // Settings toggle, next to the speaking and Whisper toggles, plus
+  // the Character music preview section.
   const originalSettings = renderSettings;
   renderSettings = function () {
     originalSettings();
-    if (document.getElementById('music-setting')) return;
-    const label = document.createElement('label');
-    label.className = 'setting-row';
-    label.id = 'music-setting';
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.id = 'music-setting-box';
-    box.checked = musicOn();
-    box.onchange = () => { setMusicEnabled(box.checked); };
-    label.append(box, document.createTextNode(' Background music during lessons'));
-    const note = document.createElement('span');
-    note.className = 'setting-note';
-    note.textContent = 'Soft study beats, made in your browser — each character has their own style, and it quiets itself for listening and speaking questions.';
-    label.append(note);
     const card = app.querySelector('.card');
-    if (card) card.append(label);
+    if (!card) return;
+    if (!document.getElementById('music-setting')) {
+      const label = document.createElement('label');
+      label.className = 'setting-row';
+      label.id = 'music-setting';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.id = 'music-setting-box';
+      box.checked = musicOn();
+      box.onchange = () => { setMusicEnabled(box.checked); };
+      label.append(box, document.createTextNode(' Background music during lessons'));
+      const note = document.createElement('span');
+      note.className = 'setting-note';
+      note.textContent = 'Soft study beats, made in your browser — each character has their own style, and it quiets itself for listening and speaking questions.';
+      label.append(note);
+      card.append(label);
+    }
+    buildPreviewSection(card);
   };
 
   window.duolibeeMusic = {
@@ -504,5 +615,10 @@
     get style() { return currentStyle ? currentStyle.name : null; },
     get styles() { return STYLES.map((s) => s.name); },
     get chords() { return currentStyle ? currentStyle.chords.map((c) => c.name) : []; },
+    preview: previewFor,
+    togglePreview,
+    stopPreview,
+    get previewHost() { return previewHost; },
+    get previewing() { return previewHost !== null; },
   };
 })();

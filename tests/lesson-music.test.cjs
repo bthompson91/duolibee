@@ -1,11 +1,13 @@
 // Lesson music test: the study-beat loop starts with a lesson, ducks for
 // listening/speaking and while speech plays, respects mute and the
 // Settings toggle, and stops on home. Each lesson plays its host
-// character's style (lumpy OPM lofi, tito-bong City pop, ate-crystal
-// Rainy jazz, jetjet Playful bounce, lola-joli Dreamy ambient,
-// tita-baby Bossa café); a session with no host (review) falls back to
-// OPM lofi. The Web Audio API is mocked so the scheduled notes and
-// gains can be asserted. Run from the repo root:
+// character's style (lumpy OPM lofi, tito-bong Arena rock, ate-crystal
+// Pop punk, jetjet Brainrot hyperpop, lola-joli Folk rondalla,
+// tita-baby Love ballad); a session with no host (review) falls back to
+// OPM lofi. Settings also has a Character music preview: each
+// character's style can be heard without starting a lesson. The Web
+// Audio API is mocked so the scheduled notes and gains can be
+// asserted. Run from the repo root:
 // node <this file>
 const fs = require('fs');
 const vm = require('vm');
@@ -303,7 +305,7 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   // character's style, deterministically — no random pick.
   const styles = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.styles', sandbox)));
   console.log('styles:', JSON.stringify(styles));
-  assert.deepStrictEqual(styles, ['OPM lofi', 'Bossa café', 'Dreamy ambient', 'City pop', 'Rainy jazz', 'Playful bounce'], 'there must be six styles, one per character');
+  assert.deepStrictEqual(styles, ['OPM lofi', 'Love ballad', 'Folk rondalla', 'Arena rock', 'Pop punk', 'Brainrot hyperpop'], 'there must be six styles, one per character');
   // Lesson -> theme -> host (lessons are grouped four per theme, in
   // theme order): 1 lumpy, 5 jetjet, 13 lola-joli, 21 tita-baby,
   // 33 tito-bong, 53 ate-crystal. A lesson can only start once the
@@ -320,11 +322,11 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   }
   const perCharacter = [
     [1, 'lumpy', 'OPM lofi'],
-    [5, 'jetjet', 'Playful bounce'],
-    [13, 'lola-joli', 'Dreamy ambient'],
-    [21, 'tita-baby', 'Bossa café'],
-    [33, 'tito-bong', 'City pop'],
-    [53, 'ate-crystal', 'Rainy jazz'],
+    [5, 'jetjet', 'Brainrot hyperpop'],
+    [13, 'lola-joli', 'Folk rondalla'],
+    [21, 'tita-baby', 'Love ballad'],
+    [33, 'tito-bong', 'Arena rock'],
+    [53, 'ate-crystal', 'Pop punk'],
   ];
   for (const [id, host, style] of perCharacter) {
     const gotHost = vm.runInContext(`LESSONS.find(l => l.id === ${id}).host`, sandbox);
@@ -336,17 +338,17 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
     await sleep(50);
   }
   // Replaying the same lesson re-picks the same (deterministic) style.
-  assert.strictEqual(await styleForLesson(33), 'City pop', 'replaying a tito-bong lesson must play City pop again');
+  assert.strictEqual(await styleForLesson(33), 'Arena rock', 'replaying a tito-bong lesson must play Arena rock again');
   // Re-rendering the same first exercise must not re-pick the style.
   vm.runInContext('renderExercise()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'City pop', 'a re-render must not change the style mid-lesson');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Arena rock', 'a re-render must not change the style mid-lesson');
   vm.runInContext(`go('home')`, sandbox);
 
-  // The Jetjet style must actually play: its loop is C-F-Dm-G.
+  // The Jetjet style must actually play: its loop is C-G-Bb-F.
   await styleForLesson(5);
   const jetjetChords = JSON.parse(JSON.stringify(vm.runInContext('window.duolibeeMusic.chords', sandbox)));
   console.log('jetjet chords:', JSON.stringify(jetjetChords));
-  assert.deepStrictEqual(jetjetChords, ['C', 'F', 'Dm', 'G'], 'the Playful bounce loop must be C-F-Dm-G');
+  assert.deepStrictEqual(jetjetChords, ['C', 'G', 'Bb', 'F'], 'the Brainrot hyperpop loop must be C-G-Bb-F');
   vm.runInContext(`go('home')`, sandbox);
 
   // A session with no host (review) falls back to OPM lofi. Make one
@@ -362,6 +364,79 @@ function freq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
   const reviewStyle = vm.runInContext('window.duolibeeMusic.style', sandbox);
   console.log('review style:', reviewStyle);
   assert.strictEqual(reviewStyle, 'OPM lofi', 'a host-less review session must fall back to OPM lofi, got ' + reviewStyle);
+  vm.runInContext(`go('home')`, sandbox);
+
+  // ---- Settings preview: hear each character's style without a lesson ----
+  vm.runInContext(`go('settings')`, sandbox);
+  await sleep(50);
+  // The preview section lists all six characters with their style and
+  // a play button. (The mock's getElementById always returns an
+  // element, so assert on the built section's children instead.)
+  const previewSection = vm.runInContext(`document.getElementById('music-preview')`, sandbox);
+  assert.strictEqual(previewSection.children.length, 8, 'the preview section must have a title, a note and six rows, got ' + previewSection.children.length);
+  const previewRows = previewSection.children.slice(2);
+  const expectedRows = [
+    ['Lumpy', 'OPM lofi'],
+    ['Tito Bong', 'Arena rock'],
+    ['Ate Crystal', 'Pop punk'],
+    ['Jetjet', 'Brainrot hyperpop'],
+    ['Lola Joli', 'Folk rondalla'],
+    ['Tita Baby', 'Love ballad'],
+  ];
+  previewRows.forEach((row, i) => {
+    assert.strictEqual(row.children[0].textContent, expectedRows[i][0] + ' — ' + expectedRows[i][1], 'row ' + i + ' must name the character and style');
+    assert.strictEqual(row.children[1].textContent, '▶ Play', 'row ' + i + ' must start as Play');
+    assert.ok(typeof row.children[1].onclick === 'function', 'row ' + i + ' must have a play button handler');
+  });
+  // Playing a character's style sets it, at full volume, outside a
+  // lesson — and actually schedules notes.
+  const oscsBefore = musicLog.oscs.length;
+  const lolaBtn = vm.runInContext(`document.getElementById('music-preview-lola-joli')`, sandbox);
+  lolaBtn.onclick();
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Folk rondalla', 'previewing Lola Joli must play Folk rondalla');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'lola-joli', 'previewHost must be lola-joli');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'a preview must play at full volume outside a lesson');
+  assert.ok(musicLog.oscs.length > oscsBefore, 'a preview must schedule notes, got ' + musicLog.oscs.length + ' vs ' + oscsBefore);
+  assert.strictEqual(lolaBtn.textContent, '⏸ Stop', 'the playing row must show Stop');
+  // Switching to another character switches the style, and the old
+  // row goes back to Play.
+  const bongBtn = vm.runInContext(`document.getElementById('music-preview-tito-bong')`, sandbox);
+  bongBtn.onclick();
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'Arena rock', 'switching to Tito Bong must play Arena rock');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'tito-bong', 'previewHost must switch to tito-bong');
+  assert.strictEqual(lolaBtn.textContent, '▶ Play', 'the old row must go back to Play');
+  assert.strictEqual(bongBtn.textContent, '⏸ Stop', 'the new row must show Stop');
+  // Tapping the same button again stops the preview.
+  bongBtn.onclick();
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'tapping the playing button again must stop the preview');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0, 'a stopped preview must be silent');
+  assert.strictEqual(bongBtn.textContent, '▶ Play', 'the stopped row must go back to Play');
+  // The preview plays even if the lesson-music toggle is off.
+  vm.runInContext('window.setMusicEnabled(false)', sandbox);
+  assert.strictEqual(vm.runInContext('state.settings.music', sandbox), false, 'the toggle must be off for this check');
+  lolaBtn.onclick();
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'lola-joli', 'a preview must start even with the lesson-music toggle off');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0.12, 'a preview must play at full volume even with the toggle off');
+  vm.runInContext('window.setMusicEnabled(true)', sandbox);
+  // Leaving Settings stops the preview.
+  vm.runInContext(`go('home')`, sandbox);
+  await sleep(50);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'leaving Settings must stop a preview');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.gain', sandbox), 0, 'leaving Settings must silence the preview');
+  // Starting a lesson stops a preview and plays the lesson's host style.
+  vm.runInContext(`go('settings')`, sandbox);
+  await sleep(50);
+  const lolaBtn2 = vm.runInContext(`document.getElementById('music-preview-lola-joli')`, sandbox);
+  lolaBtn2.onclick();
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'lola-joli', 'the preview must be playing before the lesson starts');
+  vm.runInContext('startLesson(1)', sandbox);
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'starting a lesson must stop a preview');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.style', sandbox), 'OPM lofi', 'the lesson must play its own host style, not the preview');
   vm.runInContext(`go('home')`, sandbox);
 
   console.log('LESSON MUSIC: PASS');
