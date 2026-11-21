@@ -52,7 +52,8 @@
           words: words,
           answer: sentence.t,
           seed: lesson.id * 977 + words.length,
-          speaker: sentence.speaker || null
+          speaker: sentence.speaker || null,
+          note: sentence.n || null
         });
         // Speak a DIFFERENT sentence from the same theme: the build uses
         // sentences[(id - 1) % n], so the speak takes the next one in the
@@ -65,7 +66,8 @@
           type: 'speak', sentence: true, srsKeys: [],
           prompt: 'Say this aloud: ' + speakSentence.t,
           item: { t: speakSentence.t, e: speakSentence.e },
-          speaker: speakSentence.speaker || null
+          speaker: speakSentence.speaker || null,
+          note: speakSentence.n || null
         });
       }
       // Ramp: longer lessons as the course progresses — one extra exercise
@@ -86,7 +88,7 @@
       }
       if (sentences.length) {
         const speak2Sentence = sentences[(lesson.id + 1) % sentences.length];
-        extraDefs.push([(e) => e.sentence === true, { type: 'speak', sentence: true, srsKeys: [], prompt: 'Say this aloud: ' + speak2Sentence.t, item: { t: speak2Sentence.t, e: speak2Sentence.e }, speaker: speak2Sentence.speaker || null }]);
+        extraDefs.push([(e) => e.sentence === true, { type: 'speak', sentence: true, srsKeys: [], prompt: 'Say this aloud: ' + speak2Sentence.t, item: { t: speak2Sentence.t, e: speak2Sentence.e }, speaker: speak2Sentence.speaker || null, note: speak2Sentence.n || null }]);
       }
       const extraCount = Math.min(5, Math.floor((displayId - 1) / 6));
       extraDefs.slice(0, extraCount).forEach(([pred, ex]) => {

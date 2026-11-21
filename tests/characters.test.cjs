@@ -181,11 +181,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   for (const id of Object.keys(dataInfo.intros)) {
     assert.ok(typeof dataInfo.intros[id] === 'string' && dataInfo.intros[id].length > 10, 'intro text for ' + id);
   }
-  console.log('3. all 100 lessons carry a host + intro; all 75 sentences a speaker: OK');
+  console.log('3. all 100 lessons carry a host + intro; all 200 sentences a speaker: OK');
 
   // Sentence exercises carry the speaker of the sentence they use, by the
-  // rotation: build -> sentences[(id-1)%3], speak1 -> sentences[id%3],
-  // speak2 (lessons 31+) -> sentences[(id+1)%3].
+  // rotation: build -> sentences[(rid-1)%n], speak1 -> sentences[rid%n],
+  // speak2 (lessons 31+) -> sentences[(rid+1)%n], where n is the theme's
+  // sentence count and rid is the ORIGINAL (legacy) lesson id. The rotation
+  // keys on the legacy id, not the remapped display id (sentence-builder.js
+  // keeps it on the old id so build/speak/speak2 stay distinct); with 3
+  // sentences the remap was invisible (the id difference was a multiple
+  // of 3), with 8 it is not, so the test must use legacyId.
   const rotation = vm.runInContext(`
     (function () {
       const out = { bad: [] };
@@ -196,9 +201,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         const s = byTheme[l.category];
         const build = l.exercises.find(e => e.type === 'build');
         const speaks = l.exercises.filter(e => e.sentence);
-        if (!build || build.speaker !== s[(id - 1) % s.length].speaker) out.bad.push('lesson ' + id + ' build speaker');
-        if (!speaks[0] || speaks[0].speaker !== s[id % s.length].speaker) out.bad.push('lesson ' + id + ' speak1 speaker');
-        if (id >= 31 && (!speaks[1] || speaks[1].speaker !== s[(id + 1) % s.length].speaker)) out.bad.push('lesson ' + id + ' speak2 speaker');
+        const rid = l.legacyId || l.id;
+        if (!build || build.speaker !== s[(rid - 1) % s.length].speaker) out.bad.push('lesson ' + id + ' build speaker');
+        if (!speaks[0] || speaks[0].speaker !== s[rid % s.length].speaker) out.bad.push('lesson ' + id + ' speak1 speaker');
+        if (id >= 31 && (!speaks[1] || speaks[1].speaker !== s[(rid + 1) % s.length].speaker)) out.bad.push('lesson ' + id + ' speak2 speaker');
       });
       // every build and sentence speak in every lesson has a speaker; word speaks do not
       LESSONS.forEach(l => l.exercises.forEach(e => {
