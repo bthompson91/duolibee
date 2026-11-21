@@ -1,6 +1,6 @@
 /* v0.21.0: account-scoped cloud reset with generation protection. */
 (()=>{
-const CLIENT='953505436719-p73hfncc6p39481s6jaedj975l2a9rul.apps.googleusercontent.com',SCOPE='openid email https://www.googleapis.com/auth/drive.appdata',NAME='duolibee-progress-v1.json';
+const CLIENT='953505436719-p73hfncc6p39481s6jaedj975l2a9rul.apps.googleusercontent.com',SCOPE='openid email https://www.googleapis.com/auth/drive.appdata',NAME='duolibee-progress-v1.json',AUTH_API='https://158-179-30-201.sslip.io/duolibee/chat/auth';
 let id='',who=null,access='',expires=0,busy=false,paused=false,running=false,timer,oauth,initialised=false,message='Sign in once. Cloud backup is automatic when authorised and online.';
 state.xp=Math.max(0,Number(state.xp)||0);
 let operation=0,connecting=false;
@@ -40,16 +40,53 @@ async function drive(r,op=operation,subject=who?.sub){
   }catch(e){failure(e);}
   if(view==='settings')renderSettings();
 }
+async function refreshViaBackend(){
+  // Silent: ask the server for a fresh access token from the stored
+  // refresh token. No Google prompt, no navigation. Returns the token
+  // response ({access_token, expires_in, scope}) or null.
+  const token=validId();
+  if(!token)return null;
+  try{
+    const r=await fetch(AUTH_API+'/refresh',{method:'POST',headers:{Authorization:'Bearer '+token}});
+    if(!r.ok)return null;
+    const data=await r.json().catch(()=>null);
+    if(!data||typeof data.access_token!=='string')return null;
+    return data;
+  }catch(_){return null;}
+}
+function startCodeFlow(op,subject,onExhausted){
+  // Popup code flow: Google returns a one-time code; the code is POSTed
+  // to the server, which exchanges it for an access token + refresh
+  // token. access_type offline + prompt consent make Google issue a
+  // refresh token. Only ever runs when the user asked to connect.
+  let codeClient;
+  const fail=()=>{if(op===operation)onExhausted();};
+  try{
+    codeClient=google.accounts.oauth2.initCodeClient({client_id:CLIENT,scope:SCOPE,ux_mode:'popup',access_type:'offline',prompt:'consent',callback:async (resp)=>{
+      if(op!==operation)return;
+      if(!resp||typeof resp.code!=='string'){fail();return;}
+      try{
+        const r=await fetch(AUTH_API+'/exchange',{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'XmlHttpRequest',Authorization:'Bearer '+validId()},body:JSON.stringify({code:resp.code})});
+        const data=await r.json().catch(()=>({}));
+        if(!r.ok||typeof data.access_token!=='string'){fail();return;}
+        drive({access_token:data.access_token,scope:data.scope||SCOPE,expires_in:data.expires_in||3600},op,subject);
+      }catch(_){fail();}
+    },error_callback:fail});
+  }catch(_){fail();return;}
+  try{codeClient.requestCode();}catch(_){fail();}
+}
 function requestDriveToken(op,subject,allowPopup,onExhausted){
   if(!window.google?.accounts?.oauth2)return false;
-  let silent=true;
-  const onError=()=>{
+  // 1. Silent first: the server mints a fresh token from the stored
+  //    refresh token, so the backup stays connected without a login.
+  refreshViaBackend().then((data)=>{
     if(op!==operation)return;
-    if(silent&&allowPopup){silent=false;try{oauth.requestAccessToken({prompt:'',login_hint:subject});return;}catch(_){}}
-    onExhausted();
-  };
-  oauth=google.accounts.oauth2.initTokenClient({client_id:CLIENT,scope:SCOPE,callback:r=>drive(r,op,subject),error_callback:onError});
-  try{oauth.requestAccessToken({prompt:'none',login_hint:subject});}catch(_){onError();}
+    if(data){drive({access_token:data.access_token,scope:data.scope||SCOPE,expires_in:data.expires_in||3600},op,subject);return;}
+    if(!allowPopup){onExhausted();return;}
+    // 2. No usable refresh token: pop the Google code flow so the user
+    //    can reconnect. Only runs when connecting was asked for.
+    startCodeFlow(op,subject,onExhausted);
+  }).catch(()=>{if(op===operation)onExhausted();});
   return true;
 }
 function connect(){

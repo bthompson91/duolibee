@@ -3,59 +3,80 @@ const dir=process.argv[2]||'.';
 const source=fs.readFileSync(path.join(dir,'cloud-save.js'),'utf8');
 const start=source.indexOf('async function drive('),end=source.indexOf('const settings=renderSettings;',start);
 assert(start>=0&&end>start);
-let requests=0,syncs=0,events=0;const statusLog=[],prompts=[];
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+let syncs=0,events=0;const statusLog=[];
+let fetchCalls=[];let refreshResult=null;let exchangeResult=null;
+let codeConfig=null,codeRequests=0;
 const c={console,TextDecoder,Uint8Array,atob,Date,setTimeout,clearTimeout,
-  CLIENT:'test-client',SCOPE:'openid email https://www.googleapis.com/auth/drive.appdata',
+  CLIENT:'test-client',SCOPE:'openid email https://www.googleapis.com/auth/drive.appdata',AUTH_API:'https://test.invalid/duolibee/chat/auth',
   id:'old-id',who:{sub:'alice',email:'alice@example.test',exp:Math.floor(Date.now()/1000)+3600},access:'existing-access',expires:Date.now()+3600000,
   operation:1,busy:false,connecting:false,initialised:false,oauth:null,timer:null,view:'home',meta:{},
   validId:()=>c.id,usable:()=>!!c.access&&Date.now()<c.expires,
   status:s=>statusLog.push(s),changed:()=>events++,renderSettings(){},
   failure:e=>{throw e},api:async()=>({sub:c.who.sub}),sync:async()=>{syncs++},
   sessionStorage:{removeItem(){}},
-  window:{google:{accounts:{oauth2:{}}}},google:{accounts:{id:{initialize(){}},oauth2:{initTokenClient:config=>({...config,requestAccessToken(opts){requests++;prompts.push(opts&&opts.prompt);}})}}}
+  fetch:async (url,opts)=>{
+    fetchCalls.push({url,opts});
+    if(String(url).endsWith('/auth/refresh')){
+      if(!refreshResult)return {ok:false,status:401,json:async()=>({error:'no stored permission'})};
+      return {ok:true,status:200,json:async()=>refreshResult};
+    }
+    if(String(url).endsWith('/auth/exchange')){
+      if(!exchangeResult)return {ok:false,status:400,json:async()=>({error:'bad code'})};
+      return {ok:true,status:200,json:async()=>exchangeResult};
+    }
+    return {ok:false,status:404,json:async()=>({})};
+  },
+  window:{google:{accounts:{oauth2:{}}}},google:{accounts:{id:{initialize(){}},oauth2:{initCodeClient:config=>{codeConfig=config;return {requestCode(){codeRequests++;if(config.callback)config.callback({code:'test-auth-code'});}};}}}}
 };
 c.window.google=c.google;
 vm.createContext(c);vm.runInContext(source.slice(start,end),c);
 function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify({sub,email:sub+'@example.test',exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.signature'};}
 (async()=>{
-  c.identity(credential('alice'));await Promise.resolve();
-  assert.equal(c.access,'existing-access');assert.equal(requests,0);assert.equal(syncs,1);
-  c.identity(credential('bob'));assert.equal(c.access,'');assert.equal(requests,1);assert.deepEqual(prompts,['none']);assert.equal(c.connecting,true);
-  c.oauth.error_callback();assert.equal(requests,2);assert.deepEqual(prompts,['none','']);assert.equal(c.connecting,true);
-  c.oauth.error_callback();assert.equal(c.connecting,false);assert(c.id);assert.equal(c.who.sub,'bob');
-  // Returning Drive user (a sync record exists) whose token expired:
-  // identity() must NOT pop the Google prompt. It fires on app load
-  // (One Tap auto-select), and if a speaking question is asking for
-  // the microphone at the same time, the Google page navigates away
-  // and the mic request comes back denied, so the question flips to
-  // a written one. Background sync retries silently instead; the
-  // user reconnects from Settings.
+  // Same account, token usable: syncs, no re-auth, no backend call.
+  c.identity(credential('alice'));await sleep(10);
+  assert.equal(c.access,'existing-access');assert.equal(fetchCalls.length,0);assert.equal(syncs,1);
+  // New user bob, no sync record: identity -> connect -> backend refresh
+  // fails (no stored token) -> code flow popup -> exchange -> drive -> sync.
+  refreshResult=null;exchangeResult={access_token:'at-bob',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.appdata'};
+  fetchCalls=[];codeRequests=0;
+  c.identity(credential('bob'));await sleep(30);
+  assert.equal(c.access,'at-bob');assert.equal(codeRequests,1);assert.equal(syncs,2);
+  assert.ok(fetchCalls.some(f=>String(f.url).endsWith('/auth/refresh')),'new user must try the backend refresh first');
+  assert.ok(fetchCalls.some(f=>String(f.url).endsWith('/auth/exchange')),'new user must exchange the code');
+  assert.equal(c.connecting,false);assert.equal(c.who.sub,'bob');
+  // Returning user (a sync record exists) whose token expired: identity
+  // must NOT auto-connect and must not pop the Google prompt.
   c.meta={bob:{fileId:'file-1',synced:'{}',lastSync:Date.now()}};
-  const reqBeforeReturning=requests;
-  c.identity(credential('bob'));await Promise.resolve();
-  assert.equal(requests,reqBeforeReturning,'returning Drive user with an expired token must not auto-connect');
-  assert.equal(c.connecting,false);
+  c.access='';c.expires=0;fetchCalls=[];codeRequests=0;
+  c.identity(credential('bob'));await sleep(10);
+  assert.equal(fetchCalls.length,0);assert.equal(codeRequests,0);assert.equal(c.connecting,false);
   assert.equal(statusLog[statusLog.length-1],'Signed in · Sync needs permission');
-  // First-time Drive connection (no sync record) still auto-connects.
-  c.meta={};c.access='';c.expires=0;
-  const reqBeforeFirst=requests;
-  c.identity(credential('bob'));await Promise.resolve();
-  assert.equal(requests,reqBeforeFirst+1,'first-time Drive connection must auto-connect');
-  assert.deepEqual(prompts.slice(-1),['none']);
-  c.oauth.error_callback();assert.equal(c.connecting,true);
-  c.oauth.error_callback();assert.equal(c.connecting,false);
+  // Expired token + backend refresh succeeds: silent, no popup, syncs.
+  refreshResult={access_token:'at-bob-2',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.appdata'};
+  c.access='';c.expires=0;fetchCalls=[];codeRequests=0;
+  const syncsBeforeRefresh=syncs;
+  c.requestDriveToken(c.operation,'bob',false,()=>{c.connecting=false;});
+  await sleep(30);
+  assert.equal(c.access,'at-bob-2');assert.equal(codeRequests,0);
+  assert.ok(fetchCalls.some(f=>String(f.url).endsWith('/auth/refresh')));
+  assert.equal(syncs,syncsBeforeRefresh+1);
+  // Expired token + backend refresh fails + no popup allowed: exhausted, no code flow.
+  refreshResult=null;c.access='';c.expires=0;fetchCalls=[];codeRequests=0;
+  let exhausted=false;
+  c.requestDriveToken(c.operation,'bob',false,()=>{exhausted=true;c.connecting=false;});
+  await sleep(30);
+  assert.equal(exhausted,true);assert.equal(codeRequests,0);assert.equal(c.access,'');
+  // drive() still rejects stale callbacks, missing scope, and keeps a good token.
   const before=c.operation;await c.drive({access_token:'stale',scope:'https://www.googleapis.com/auth/drive.appdata'},before-1,'alice');assert.equal(c.access,'');
   await c.drive({access_token:'missing-scope',scope:'openid email'},c.operation,'bob');assert.equal(c.access,'');assert(c.id);
-  await c.drive({access_token:'good',scope:'openid email https://www.googleapis.com/auth/drive.appdata',expires_in:3600},c.operation,'bob');assert.equal(c.access,'good');assert.equal(syncs,2);
-  const renewals=requests;c.access='';c.expires=0;
-  c.requestDriveToken(c.operation,'bob',false,()=>{c.connecting=false;});
-  assert.equal(requests,renewals+1);assert.deepEqual(prompts.slice(-1),['none']);
-  c.oauth.error_callback();assert.equal(requests,renewals+1);assert.equal(c.connecting,false);
+  const syncsBeforeGood=syncs;
+  await c.drive({access_token:'good',scope:'openid email https://www.googleapis.com/auth/drive.appdata',expires_in:3600},c.operation,'bob');assert.equal(c.access,'good');assert.equal(syncs,syncsBeforeGood+1);
   const math=require(path.resolve(dir,'chat-notifications.js'));
   assert.equal(math.available(0),1);assert.equal(math.available(100),100);
   assert.equal(math.unlocked(5,5),true);assert.equal(math.unlocked(5,6),false);
   // Pending reset + expired Drive token: sync() must still renew the
-  // token (silent) so Erase can run again, and must not reconcile.
+  // token (silent, via the backend) so Erase can run again, and must not reconcile.
   const syncStart=source.indexOf('async function sync()');
   const syncEnd=source.indexOf('async function drive(',syncStart);
   assert(syncStart>=0&&syncEnd>syncStart);
@@ -65,17 +86,18 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   vm.runInContext(source.slice(syncStart,syncEnd),c);
   c.resets={bob:{generation:'g1',pending:true}};
   c.access='';c.expires=0;c.connecting=false;
-  const reqBeforePending=requests;
-  await c.sync();
-  assert.equal(requests,reqBeforePending+1,'sync with a pending reset and expired token must attempt silent renewal');
-  assert.deepEqual(prompts.slice(-1),['none']);
+  refreshResult={access_token:'at-bob-3',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.appdata'};
+  fetchCalls=[];codeRequests=0;
+  await c.sync();await sleep(30);
+  assert.ok(fetchCalls.some(f=>String(f.url).endsWith('/auth/refresh')),'sync with a pending reset and expired token must attempt silent backend renewal');
+  assert.equal(codeRequests,0,'sync must never pop the Google prompt');
   assert.equal(reconcileCalls,0,'sync with a pending reset must not reconcile');
-  assert.equal(statusLog[statusLog.length-1],'Signed in. Renewing Google sync permission…');
+  assert.equal(statusLog[statusLog.length-1],'Reset incomplete. Use Erase learning progress again to finish; backup is paused.');
   // Pending reset + valid token: no renewal, no reconcile, still points at Erase.
   c.access='good';c.expires=Date.now()+3600000;c.connecting=false;
-  const reqBeforeValid=requests;
+  fetchCalls=[];
   await c.sync();
-  assert.equal(requests,reqBeforeValid,'sync with a pending reset and valid token must not renew');
+  assert.equal(fetchCalls.length,0,'sync with a pending reset and valid token must not renew');
   assert.equal(reconcileCalls,0);
   assert.equal(statusLog[statusLog.length-1],'Reset incomplete. Use Erase learning progress again to finish; backup is paused.');
   // No pending reset: the normal path still reconciles.
@@ -91,12 +113,12 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   c.alert=(m)=>alerts.push(m);
   vm.runInContext(source.slice(rpStart,rpEnd),c);
   c.access='';c.expires=0;c.connecting=false;c.busy=false;
-  const reqBeforeErase=requests;
-  await c.resetProgress();
-  assert.equal(requests,reqBeforeErase+1,'erase with an expired token must attempt renewal');
-  assert.deepEqual(prompts.slice(-1),['none']);
+  refreshResult=null;exchangeResult=null;fetchCalls=[];codeRequests=0;
+  await c.resetProgress();await sleep(30);
+  assert.ok(fetchCalls.some(f=>String(f.url).endsWith('/auth/refresh')),'erase with an expired token must attempt renewal');
+  assert.equal(codeRequests,1,'erase with an expired token must offer the Google code flow');
   assert.equal(alerts.length,1);
   assert.ok(/renewing first/.test(alerts[0])&&/tap Erase learning progress again/.test(alerts[0]),'erase must tell the user to retry after connecting, got: '+alerts[0]);
   assert.equal(c.access,'','erase must not proceed without a token');
-  console.log('Checks passed: same-account permission retention, account-switch isolation, silent-first Drive auth with popup fallback, silent-only renewal without a popup, blocked-popup recovery, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math, pending-reset token renewal without reconcile, erase guard renews instead of refusing.');
+  console.log('Checks passed: same-account permission retention, account-switch isolation, backend refresh-token renewal without a popup, code-flow exchange for first-time connect, returning-user no-auto-connect, silent-only renewal without a popup, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math, pending-reset token renewal without reconcile, erase guard renews instead of refusing.');
 })().catch(e=>{console.error(e);process.exitCode=1});
