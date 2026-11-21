@@ -652,6 +652,32 @@ function musicState() {
   volSlider.oninput();
   assert.strictEqual(vm.runInContext('state.settings.musicVolume', sandbox), 1, 'dragging the slider back to 100 must save 1');
   assert.strictEqual(vm.runInContext(`document.getElementById('music-volume-value').textContent`, sandbox), '100%', 'the slider label must read 100% again');
+  // Dragging the slider must be audible: in Settings nothing is playing,
+  // so moving the slider starts a preview of the default host's track at
+  // the slider level — the user hears the level live as they drag. This
+  // is the regression for the slider seeming to do nothing.
+  vm.runInContext('window.duolibeeMusic.stopPreview()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'the preview must be stopped before this check');
+  volSlider.value = '50';
+  volSlider.oninput();
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'lumpy', 'dragging the slider with no preview playing must start a preview of the default host');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.05, 'the slider preview must play at the slider level (0.05 at 50%)');
+  assert.strictEqual(musicEl().paused, false, 'the slider preview must be playing');
+  assert.strictEqual(musicEl().src, 'assets/music/lumpy.mp3', 'the slider preview must load the default host track');
+  // Dragging to 0 silences it, and dragging back up resumes it.
+  volSlider.value = '0';
+  volSlider.oninput();
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0, 'dragging the slider to 0 must silence the preview');
+  assert.strictEqual(musicEl().paused, true, 'dragging the slider to 0 must pause the preview element');
+  volSlider.value = '50';
+  volSlider.oninput();
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.05, 'dragging the slider back up must resume the preview at the new level');
+  assert.strictEqual(musicEl().paused, false, 'dragging the slider back up must resume the preview');
+  // Restore full and stop the preview, so the rows below all start as Play.
+  volSlider.value = '100';
+  volSlider.oninput();
+  vm.runInContext('window.duolibeeMusic.stopPreview()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), null, 'the slider preview must be stopped again before the preview rows are checked');
   // The preview section lists all six characters with their track and
   // a play button. (The mock's getElementById always returns an
   // element, so assert on the built section's children instead.)

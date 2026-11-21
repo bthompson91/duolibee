@@ -538,6 +538,12 @@
     volSlider.oninput = () => {
       setMusicVolume(Number(volSlider.value));
       volPct.textContent = Math.round(musicLevel() * 100) + '%';
+      // Dragging the slider must be audible: in Settings nothing is
+      // playing, so start a preview of the default host's track — the
+      // level is then heard live as the slider moves. A preview
+      // already playing changes volume through targetVolume() instead.
+      // At 0 the preview is silent (targetVolume 0 pauses the element).
+      if (!previewHost) previewFor(DEFAULT_HOST);
     };
     volLabel.append(document.createTextNode(' Music volume '), volSlider, volPct);
     const volNote = document.createElement('span');
