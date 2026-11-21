@@ -82,6 +82,9 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   assert(syncStart>=0&&syncEnd>syncStart);
   let reconcileCalls=0;
   c.reconcile=async()=>{reconcileCalls++;};
+  let generationResult='g1';
+  c.currentGeneration=async()=>generationResult;
+  c.writeResets=()=>{};
   c.resets={};c.navigator={onLine:true};
   vm.runInContext(source.slice(syncStart,syncEnd),c);
   c.resets={bob:{generation:'g1',pending:true}};
@@ -100,10 +103,21 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   assert.equal(fetchCalls.length,0,'sync with a pending reset and valid token must not renew');
   assert.equal(reconcileCalls,0);
   assert.equal(statusLog[statusLog.length-1],'Reset incomplete. Use Erase learning progress again to finish; backup is paused.');
+  // Abandoned reset: the Drive marker is gone (generation 'legacy') but a
+  // stale local reset record remains — sync must clear it and reconcile,
+  // not stay paused and not wipe local progress.
+  c.resets={bob:{generation:'g1',pending:true}};
+  generationResult='legacy';
+  c.access='good';c.expires=Date.now()+3600000;c.connecting=false;
+  fetchCalls=[];const reconcileBeforeAbandon=reconcileCalls;
+  await c.sync();
+  assert.deepEqual(c.resets,{},'sync must clear a stale reset record when Drive has no marker');
+  assert.equal(reconcileCalls,reconcileBeforeAbandon+1,'sync must reconcile once the stale reset is abandoned');
+  generationResult='g1';
   // No pending reset: the normal path still reconciles.
   c.resets={};
   await c.sync();
-  assert.equal(reconcileCalls,1,'sync without a pending reset must reconcile');
+  assert.equal(reconcileCalls,2,'sync without a pending reset must reconcile');
   // Active lesson (running): sync must not start at all — no token
   // renewal, no reconcile — so a background sync can never replace state
   // and call go('home') mid-question, kicking the user out of a lesson
@@ -133,5 +147,5 @@ function credential(sub){return {credential:'header.'+Buffer.from(JSON.stringify
   assert.equal(alerts.length,1);
   assert.ok(/renewing first/.test(alerts[0])&&/tap Erase learning progress again/.test(alerts[0]),'erase must tell the user to retry after connecting, got: '+alerts[0]);
   assert.equal(c.access,'','erase must not proceed without a token');
-  console.log('Checks passed: same-account permission retention, account-switch isolation, backend refresh-token renewal without a popup, code-flow exchange for first-time connect, returning-user no-auto-connect, silent-only renewal without a popup, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math, pending-reset token renewal without reconcile, erase guard renews instead of refusing, sync never interrupts an active lesson.');
+  console.log('Checks passed: same-account permission retention, account-switch isolation, backend refresh-token renewal without a popup, code-flow exchange for first-time connect, returning-user no-auto-connect, silent-only renewal without a popup, stale callback rejection, Drive-scope checks, unified continuation, unlock badge math, pending-reset token renewal without reconcile, erase guard renews instead of refusing, sync never interrupts an active lesson, abandoned-reset recovery clears the stale record and reconciles.');
 })().catch(e=>{console.error(e);process.exitCode=1});
