@@ -1,2 +1,0 @@
-# Character music tracks, replacing the generative Web Audio styles.
-# One file per character; the app maps each character to its file in lesson-music.js.
