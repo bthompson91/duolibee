@@ -280,6 +280,20 @@
     try {
       if (shouldPlay && audio.paused) {
         const p = audio.play();
+        if (p && typeof p.then === 'function') {
+          // iOS can reset the element's volume to 1.0 when playback
+          // resumes after an interruption (e.g. the mic opening), so
+          // setting it before play() is not enough — re-apply the
+          // target once the resume has actually happened. A fade-out
+          // in progress owns the volume instead, so leave it alone.
+          p.then(() => {
+            if (fade || audioFailed) return;
+            try {
+              const now = targetVolume();
+              if (Math.abs(audio.volume - now) > 0.001) audio.volume = now;
+            } catch (e) { /* ignore */ }
+          });
+        }
         if (p && typeof p.catch === 'function') p.catch(() => { /* refused; a later tick or tap retries */ });
       } else if (!shouldPlay && !audio.paused) {
         audio.pause();

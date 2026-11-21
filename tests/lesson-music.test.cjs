@@ -67,6 +67,11 @@ const bodyEl = new El('body');
 // playback can be asserted. answer-speech.js also uses new Audio()
 // for its shared clip element, so the mock must support the
 // properties it touches (playbackRate, onplaying, onended, onerror).
+// `iosResetVolumeOnPlay` simulates iOS Safari: when the microphone
+// opens, iOS interrupts the audio session and, when playback resumes,
+// resets the element's volume to 1.0. It is off by default so the
+// other tests see a well-behaved element; the mic-interruption test
+// turns it on.
 class MockAudio {
   constructor() {
     this._src = '';
@@ -82,10 +87,15 @@ class MockAudio {
     this.onended = null;
     this.onerror = null;
     this._listeners = {};
+    this.iosResetVolumeOnPlay = false;
   }
   set src(v) { this._src = String(v); }
   get src() { return this._src; }
-  play() { this.playCalls++; this.paused = false; return Promise.resolve(); }
+  play() {
+    this.playCalls++; this.paused = false;
+    if (this.iosResetVolumeOnPlay) this.volume = 1.0;
+    return Promise.resolve();
+  }
   pause() { this.pauseCalls++; this.paused = true; }
   addEventListener(type, fn) { (this._listeners[type] = this._listeners[type] || []).push(fn); }
   removeEventListener() {}
@@ -376,6 +386,49 @@ function musicState() {
   `, sandbox);
   await sleep(150);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a choice exercise must restore half volume after the mic tests');
+
+  // ---- iOS interruption: opening the mic must not jump the volume to 100% ----
+  // On a real iPhone, opening the mic interrupts the audio session:
+  // iOS pauses the track and, when playback resumes, resets the
+  // element's volume to 1.0. lesson-music.js sets the volume BEFORE
+  // calling play(), so the resume undoes the dim — the track jumps to
+  // full volume. The mock simulates that here (play() resets the
+  // volume to 1.0). The music must end up at 0.05, playing — not 1.0.
+  // The check flushes microtasks only (no timer), so the 250 ms tick
+  // cannot be what fixes it: the resume itself must re-apply the dim.
+  vm.runInContext(`
+    (function () {
+      const idx = session.exercises.findIndex((e) => e.type === 'speak');
+      index = idx; renderExercise();
+    })()
+  `, sandbox);
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'a speaking exercise must duck to 0.04 before the iOS interruption test');
+  el.iosResetVolumeOnPlay = true;
+  el.paused = true; // iOS pauses the element when the mic activates
+  vm.runInContext('window.duolibeeMicStart()', sandbox);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.strictEqual(el.volume, 0.05, 'opening the mic must not jump the music to 100%, got ' + el.volume);
+  assert.strictEqual(el.paused, false, 'the track must be playing after the mic opens');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.recording', sandbox), true, 'recording must be reported while the mic is active');
+  // And it must stay at 0.05 while the recording runs, not drift back
+  // up — the tick is a backstop, not the fix.
+  await sleep(300);
+  assert.strictEqual(el.volume, 0.05, 'the track must stay at 0.05 while recording, got ' + el.volume);
+  el.iosResetVolumeOnPlay = false;
+  vm.runInContext('window.duolibeeMicEnd()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'stopping the recording must restore the ducked volume after the iOS interruption test');
+  // Back to a choice exercise, so the tests that follow see the
+  // normal half volume again.
+  vm.runInContext(`
+    (function () {
+      const idx = session.exercises.findIndex((e) => e.type === 'choice');
+      index = idx; renderExercise();
+    })()
+  `, sandbox);
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a choice exercise must restore half volume after the iOS interruption test');
 
   // The global mute silences the music and pauses the track, and
   // unmuting resumes it.
