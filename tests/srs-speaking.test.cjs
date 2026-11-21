@@ -482,6 +482,63 @@ for (const f of order) {
   assert.ok(reverseEnglish.fbClass && reverseEnglish.fbClass.includes('good'), 'typing the correct English for a reverse question must be marked right');
   assert.ok(reverseEnglish.fbText && /Tama! Correct!/.test(reverseEnglish.fbText), 'the feedback must say correct');
 
+  // ---- Typed answers must not double-count (audit fix) ----
+  // answerTyped() is the single handler for translate and reverse, and it
+  // must be covered by the same double-answer guards as the other answer
+  // functions. Answering the same typed question twice (two Check taps)
+  // must count once, not twice — in a lesson and in a review (where the
+  // Check button is not disabled after answering).
+  const doubleTyped = vm.runInContext(`
+    (function () {
+      const out = {};
+      // lesson: translate (lesson 34, bangko -> bank)
+      for (let i = 1; i < 34; i++) state.completed[i] = { last: Date.now() };
+      startLesson(34);
+      let ti = session.exercises.findIndex((e) => e.type === 'translate');
+      index = ti; correct = 0; renderExercise();
+      document.getElementById('answer').value = session.exercises[index].item.t;
+      answerTyped();
+      const d1 = correct;
+      document.getElementById('answer').value = session.exercises[index].item.t;
+      answerTyped();
+      out.lessonTranslate = { d1, d2: correct };
+      // lesson: reverse (lesson 35, eskwelahan -> school)
+      for (let i = 1; i < 35; i++) state.completed[i] = { last: Date.now() };
+      startLesson(35);
+      let ri = session.exercises.findIndex((e) => e.type === 'reverse');
+      index = ri; correct = 0; renderExercise();
+      document.getElementById('answer').value = 'school';
+      answerTyped();
+      const r1 = correct;
+      document.getElementById('answer').value = 'school';
+      answerTyped();
+      out.lessonReverse = { d1: r1, d2: correct };
+      // review: a question answered twice must also count once. (The live
+      // review is choice-only — review-core.js replaces startReview with a
+      // mixed choice practice — so double-answer is tested on a choice.)
+      const keys = Object.keys(state.srs);
+      keys.forEach((k) => { state.srs[k].due = 0; });
+      save();
+      startReview();
+      let rti = session.exercises.findIndex((e) => e.type === 'choice');
+      if (rti < 0) { out.reviewChoice = { found: false }; return out; }
+      index = rti; correct = 0; renderExercise();
+      answerChoice(session.exercises[index].answer);
+      const v1 = correct;
+      answerChoice(session.exercises[index].answer);
+      out.reviewChoice = { found: true, d1: v1, d2: correct };
+      return out;
+    })()
+  `, sandbox);
+  console.log('double-answer typed:', JSON.stringify(doubleTyped));
+  assert.strictEqual(doubleTyped.lessonTranslate.d1, 1, 'first translate answer must count once');
+  assert.strictEqual(doubleTyped.lessonTranslate.d2, 1, 'second translate answer must not count again');
+  assert.strictEqual(doubleTyped.lessonReverse.d1, 1, 'first reverse answer must count once');
+  assert.strictEqual(doubleTyped.lessonReverse.d2, 1, 'second reverse answer must not count again');
+  assert.strictEqual(doubleTyped.reviewChoice.found, true, 'the review must contain a choice question');
+  assert.strictEqual(doubleTyped.reviewChoice.d1, 1, 'first review choice answer must count once');
+  assert.strictEqual(doubleTyped.reviewChoice.d2, 1, 'second review choice answer must not count again');
+
   // ---- Speaking fallback: unsupported browser swaps to a written question ----
   const fallback = vm.runInContext(`
     (function () {

@@ -29,7 +29,7 @@
   nextLesson=function(){return LESSONS.find(l=>!state.completed[l.id]);};
   const originalFeedback=feedback;
   feedback=function(ok,msg){if(session.id==='review')session.results[index]=!!ok;originalFeedback(ok,msg);};
-  ['answerChoice','answerTranslate','answerAudio','checkBuild'].forEach(name=>{
+  ['answerChoice','answerTyped','answerAudio','checkBuild'].forEach(name=>{
     const fn=window[name];window[name]=function(...args){if(session._answeredIndex===index)return;session._answeredIndex=index;return fn(...args);};
   });
   const originalStart=startLesson;

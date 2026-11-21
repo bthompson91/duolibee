@@ -440,7 +440,7 @@
     feedback(ok, ok ? 'Tama! Well spoken!' : 'I heard “' + session.speakHeard + '”. Correct: ' + ex.item.t);
   };
   replaceSpeakWithChoice = function () {
-    swapToWritten('Speaking question replaced with a written question. No penalty.');
+    return swapToWritten('Speaking question replaced with a written question. No penalty.');
   };
   // Settings toggle: speaking defaults to on. Switching it off swaps speak
   // exercises for written questions at render time, like muting does audio.
