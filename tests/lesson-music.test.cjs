@@ -258,7 +258,7 @@ function musicState() {
   ], 'there must be six tracks, one per character');
 
   // Start lesson 1. The first graded exercise is a choice (not audio /
-  // speak), so the track plays at half volume, looped.
+  // speak), so the track plays at quarter volume, looped.
   vm.runInContext('startLesson(1)', sandbox);
   await sleep(150);
   // Lesson 1 is hosted by lumpy.
@@ -267,12 +267,12 @@ function musicState() {
   assert.strictEqual(lumpy.track, 'assets/music/lumpy.mp3', 'lesson 1 must load Lumpy\'s track, got ' + lumpy.track);
   assert.strictEqual(lumpy.host, 'lumpy', 'lesson 1 must be hosted by lumpy');
   assert.strictEqual(lumpy.playing, true, 'music must be playing during a lesson');
-  assert.strictEqual(lumpy.volume, 0.25, 'a choice exercise must play at half volume, got ' + lumpy.volume);
+  assert.strictEqual(lumpy.volume, 0.125, 'a choice exercise must play at quarter volume, got ' + lumpy.volume);
   const el = musicEl();
   assert.ok(el, 'an <audio> element must exist once a lesson starts');
   assert.strictEqual(el.src, 'assets/music/lumpy.mp3', 'the element must load Lumpy\'s track');
   assert.strictEqual(el.loop, true, 'the track must loop (lessons run longer than the track)');
-  assert.strictEqual(el.volume, 0.25, 'the element volume must be half volume on a choice exercise');
+  assert.strictEqual(el.volume, 0.125, 'the element volume must be quarter volume on a choice exercise');
   assert.strictEqual(el.paused, false, 'the element must be playing');
   assert.ok(el.playCalls >= 1, 'play() must have been called');
 
@@ -301,7 +301,7 @@ function musicState() {
   await sleep(150);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'a speaking exercise must duck the music');
 
-  // Back to a choice exercise: half volume again.
+  // Back to a choice exercise: quarter volume again.
   vm.runInContext(`
     (function () {
       const idx = session.exercises.findIndex((e) => e.type === 'choice');
@@ -309,14 +309,14 @@ function musicState() {
     })()
   `, sandbox);
   await sleep(150);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a choice exercise must restore half volume');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'a choice exercise must restore quarter volume');
 
   // Speech playback ducks the music even on a choice exercise, and
   // restores it when the clip ends.
   vm.runInContext('window.duolibeeSpeechStart()', sandbox);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'speech playback must duck the music');
   vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'speech end must restore the music');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'speech end must restore the music');
 
   // A lost speech-end event must not leave the music ducked forever.
   // iOS often never fires the utterance onend, and pausing a clip never
@@ -328,12 +328,12 @@ function musicState() {
   // 15s lease and the music must come back up on its own.
   mockNow += 16000;
   vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a stale speech duck must clear after the lease so the music comes back up');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'a stale speech duck must clear after the lease so the music comes back up');
   // And a fresh clip still ducks (the lease only clears stale state).
   vm.runInContext('window.duolibeeSpeechStart()', sandbox);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'a new clip must duck again');
   vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'speech end must restore the music after the lease test');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'speech end must restore the music after the lease test');
 
   // ---- Microphone recording: dim to 5%, never pause ----
   // On a speaking exercise the music ducks to 0.04. While the
@@ -377,7 +377,7 @@ function musicState() {
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'a stale mic state must clear after the lease so the music returns to the exercise volume');
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.recording', sandbox), false, 'a stale mic state must report not recording');
   // Back to a choice exercise, so the tests that follow see the
-  // normal half volume again.
+  // normal quarter volume again.
   vm.runInContext(`
     (function () {
       const idx = session.exercises.findIndex((e) => e.type === 'choice');
@@ -385,7 +385,7 @@ function musicState() {
     })()
   `, sandbox);
   await sleep(150);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a choice exercise must restore half volume after the mic tests');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'a choice exercise must restore quarter volume after the mic tests');
 
   // ---- iOS interruption: opening the mic must not jump the volume to 100% ----
   // On a real iPhone, opening the mic interrupts the audio session:
@@ -420,7 +420,7 @@ function musicState() {
   vm.runInContext('window.duolibeeMicEnd()', sandbox);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'stopping the recording must restore the ducked volume after the iOS interruption test');
   // Back to a choice exercise, so the tests that follow see the
-  // normal half volume again.
+  // normal quarter volume again.
   vm.runInContext(`
     (function () {
       const idx = session.exercises.findIndex((e) => e.type === 'choice');
@@ -428,7 +428,7 @@ function musicState() {
     })()
   `, sandbox);
   await sleep(150);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a choice exercise must restore half volume after the iOS interruption test');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'a choice exercise must restore quarter volume after the iOS interruption test');
 
   // The global mute silences the music and pauses the track, and
   // unmuting resumes it.
@@ -437,7 +437,7 @@ function musicState() {
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.playing', sandbox), false, 'mute must report not playing');
   assert.strictEqual(el.paused, true, 'mute must pause the track');
   vm.runInContext('state.settings.muted = false; window.duolibeeMusic.updateMusic()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'unmute must restore the music');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'unmute must restore the music');
   assert.strictEqual(el.paused, false, 'unmute must resume the track');
 
   // The Settings toggle turns it off and on.
@@ -447,7 +447,7 @@ function musicState() {
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.playing', sandbox), false, 'turning music off must report not playing');
   assert.strictEqual(el.paused, true, 'turning music off must pause the track');
   vm.runInContext('window.setMusicEnabled(true)', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'turning music on must restore it during a lesson');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'turning music on must restore it during a lesson');
   assert.strictEqual(el.paused, false, 'turning music on must resume the track');
 
   // Going home fades the music out over about a second and a half,
@@ -458,7 +458,7 @@ function musicState() {
   const home = musicState();
   console.log('home (fading):', JSON.stringify(home));
   assert.strictEqual(home.playing, true, 'going home must keep the music playing while it fades');
-  assert.ok(home.volume > 0 && home.volume <= 0.25, 'going home must fade from the lesson volume, got ' + home.volume);
+  assert.ok(home.volume > 0 && home.volume <= 0.125, 'going home must fade from the lesson volume, got ' + home.volume);
   assert.strictEqual(el.paused, false, 'the track must keep playing while it fades');
   // Fast-forward past the 1.5 s fade: it must reach 0 and pause.
   mockNow += 2000;
@@ -505,18 +505,18 @@ function musicState() {
   assert.ok(fadeMid > 0 && fadeMid < 0.04, 'halfway through the fade the volume must have dropped but not reached 0, got ' + fadeMid);
   assert.strictEqual(el.paused, false, 'the track must still be playing mid-fade');
   // Starting a new lesson mid-fade cancels the fade and plays the new
-  // lesson's track at half volume.
+  // lesson's track at quarter volume.
   vm.runInContext('startLesson(1)', sandbox);
   await sleep(150);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'starting a lesson mid-fade must cancel the fade and restore half volume');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'starting a lesson mid-fade must cancel the fade and restore quarter volume');
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.track', sandbox), 'assets/music/lumpy.mp3', 'the new lesson must play its own host track');
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.fading', sandbox), false, 'the fade must be cancelled when a new lesson starts');
   assert.strictEqual(el.paused, false, 'the new lesson must be playing');
   // The cancelled fade must not come back: advancing time leaves the
-  // new lesson playing at half volume.
+  // new lesson playing at quarter volume.
   mockNow += 3000;
   vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a cancelled fade must not resume');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'a cancelled fade must not resume');
   assert.strictEqual(el.paused, false, 'the new lesson must still be playing');
   // Finish the lesson again and let the fade run to the end.
   await completeLesson(1);
@@ -617,14 +617,14 @@ function musicState() {
     assert.strictEqual(row.children[1].textContent, '▶ Play', 'row ' + i + ' must start as Play');
     assert.ok(typeof row.children[1].onclick === 'function', 'row ' + i + ' must have a play button handler');
   });
-  // Playing a character's track loads it, at half volume, outside a
+  // Playing a character's track loads it, at quarter volume, outside a
   // lesson.
   const lolaBtn = vm.runInContext(`document.getElementById('music-preview-lola-joli')`, sandbox);
   lolaBtn.onclick();
   await sleep(150);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.track', sandbox), 'assets/music/lola-joli.mp3', 'previewing Lola Joli must load her track');
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'lola-joli', 'previewHost must be lola-joli');
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a preview must play at half volume outside a lesson');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'a preview must play at quarter volume outside a lesson');
   assert.strictEqual(musicEl().src, 'assets/music/lola-joli.mp3', 'a preview must load the track into the element');
   assert.strictEqual(musicEl().paused, false, 'a preview must play');
   assert.strictEqual(lolaBtn.textContent, '⏸ Stop', 'the playing row must show Stop');
@@ -649,7 +649,7 @@ function musicState() {
   lolaBtn.onclick();
   await sleep(150);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.previewHost', sandbox), 'lola-joli', 'a preview must start even with the lesson-music toggle off');
-  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a preview must play at half volume even with the toggle off');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.125, 'a preview must play at quarter volume even with the toggle off');
   vm.runInContext('window.setMusicEnabled(true)', sandbox);
   // Leaving Settings stops the preview.
   vm.runInContext(`go('home')`, sandbox);

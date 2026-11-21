@@ -4,23 +4,30 @@ Lumpia Lingo is a playful, Duolingo-inspired Tagalog learning web app. It works 
 
 ## Highlights
 
-- 60 lessons across 12 units
-- Multiple-choice, typed translation, listening, sentence-building, matching, and speaking exercises (browser speech recognition, with a written-question fallback)
+- 100 lessons across 25 themes, each hosted by one of six characters (Lumpy, Tito Bong, Ate Crystal, Jetjet, Lola Joli, Tita Baby)
+- Multiple-choice, typed translation, listening, sentence-building, matching, and speaking exercises
 - Spaced-repetition Practice Hub: each word is scheduled by how you actually answered it — a first-try correct answer advances it, a first-try mistake brings it back soon
-- Daily goals, quests, streaks, streak freezes, automatic streak repair, gems, and hearts
-- Achievements, profile statistics, and confetti rewards
-- Dark mode, adjustable speech rate, sound effects, and progress reset
-- Mobile-friendly design; installable from Chrome or Safari via **Add to Home Screen**
+- Daily lesson streaks, a daily Wikipedia quiz, and a daily crossword
+- Pre-generated audio for every word and sentence, plus an opt-in on-device Whisper model for speaking transcription
+- A Gemini chat tutor for free-form Tagalog conversation (needs the small Flask backend in `server/`)
+- Per-character lesson music: each host character has their own track, played quietly in the background and ducked while listening or speaking
+- No gems, hearts, crowns, quests, or streak freezes
+- Lumpy is the mascot. The interface uses a pastel Philippine-flag palette — sand background, beige cards, rose for errors. No dark mode, no blue anywhere.
+- Mobile-friendly; installable from Chrome or Safari via **Add to Home Screen**
 
 ## Learning and pronunciation
 
-Lumpia Lingo uses five exercise types: multiple choice, typed translation, listening, sentence building, and matching. Lessons are stored as static JSON data, so the app runs without a backend.
+Lessons are generated from the static catalog in `data/lessons.json` (100 lessons, 25 themes, 300 words), so the lesson side of the app runs without a backend.
 
-For audio, Lumpia Lingo prefers a Filipino or Tagalog system text-to-speech voice. If one is unavailable, it uses a pronunciation fallback in `pronunciation.js` to guide a generic voice toward Tagalog vowel targets, stress, `ng`, and `mga`. The app clearly identifies when it is using approximate pronunciation rather than a native Tagalog voice.
+Audio is pre-generated, not synthesized on the fly: `assets/audio/` holds ~1,478 edge-tts MP3 clips (Filipino voices) covering words and sentences, keyed by a content-addressed manifest. Speaking exercises transcribe the learner's recording with an opt-in on-device Whisper model (`whisper.js` / `whisper-worker.js`, downloaded only when enabled in Settings); otherwise transcription uses the cloud model. A handful of clips were hand-fixed where the TTS voice misread a word — check before regenerating audio.
+
+## Lesson music
+
+Each lesson plays its host character's track from `assets/music/` (one MP3 per host character), looped at a quiet background level. The track ducks while a speech clip plays or on a listening/speaking exercise, dims to 5% while the microphone is recording (it never pauses for the mic), and fades out over ~1.5 s when a lesson ends. Settings has a music toggle, a global mute, and a per-character preview.
 
 ## Progress sync
 
-Progress is always saved locally in browser `localStorage`. Users can optionally connect Google Drive to create a private backup in the app’s Drive app-data folder.
+Progress is always saved locally in browser `localStorage`. Users can optionally connect Google Drive to create a private backup in the app's Drive app-data folder.
 
 Cloud sync includes:
 
@@ -32,11 +39,7 @@ Cloud sync includes:
 - Resume support for an unfinished lesson
 - Offline operation: local saving continues if Google Drive is unavailable
 
-The app requests only the Google Drive app-data scope, so it cannot browse or modify the rest of a user’s Drive files.
-
-## Accessibility and interface
-
-The interface includes high-contrast dark-mode surfaces, clear tab highlighting, readable headings and spacing, and accessible feedback for lessons, answers, statistics, and toasts. The bee mascot provides visual encouragement across the Learn, Practice, Quests, Profile, and Settings views.
+The app requests only the Google Drive app-data scope, so it cannot browse or modify the rest of a user's Drive files. Sign-in uses an authorization-code flow; refresh tokens are stored per user in the server database, so the backup renews itself silently.
 
 ## Project structure
 
@@ -45,21 +48,41 @@ The interface includes high-contrast dark-mode surfaces, clear tab highlighting,
 | `index.html` | App shell and main interface |
 | `app.js` | Core learning app, state, navigation, and UI |
 | `learning-flow.js` | Lesson flow and exercise sequencing |
-| `daily-progress.js` | Daily goals, quests, streaks, and progression |
-| `lesson-retries.js` | Lesson retry behaviour |
-| `pronunciation.js` | Tagalog pronunciation fallback |
+| `lesson-progression.js` | Lesson locking and progression |
+| `lesson-retries.js` | Lesson retry behaviour and double-answer guards |
+| `lesson-numbering.js` | Lesson numbering |
+| `lesson-music.js` | Per-character lesson music, ducking, mic dim, fade-out |
+| `speaking.js` | Speaking exercises, recording, transcription routing |
+| `answer-speech.js` | Speech clip playback (shared audio element) |
 | `speech-routing.js` | Text-to-speech voice selection and routing |
-| `translation.js` | Translation support |
-| `cloud-save.js` | Local storage and optional Google Drive sync |
+| `pronunciation.js` | Tagalog pronunciation fallback (Abakada guide) |
+| `sentence-builder.js` | Sentence-building exercises |
 | `category-generator.js` | Lesson/category generation tooling |
+| `review-core.js` | Practice Hub (SRS review) core |
+| `review-conversations.js` | Review of saved chat conversations |
+| `cloud-save.js` | Local storage and optional Google Drive sync |
+| `daily-progress.js` | Daily streaks and Wikipedia quiz |
+| `daily-crossword.js` | Daily crossword |
 | `classic-rhymes.js` | Rhyme-based learning content |
-| `data/lessons.json` | Lesson content |
+| `characters.js` | Host character data |
+| `mascots.js` | Mascot images and expressions |
+| `whisper.js`, `whisper-worker.js` | Opt-in on-device Whisper transcription |
+| `global-mute.js` | Global mute |
+| `sound-effects.js` | Answer sound effects |
+| `translation.js` | Translation support |
+| `chat-notifications.js` | Chat notifications |
+| `webpage-update.js` | Update check against the live version |
+| `data/lessons.json` | Lesson content (100 lessons, 25 themes) |
 | `data/rhymes.json` | Rhyme data |
-| `assets/` | Transparent mascot images |
+| `assets/audio/` | Pre-generated pronunciation MP3s + manifest |
+| `assets/music/` | One lesson-music MP3 per host character |
+| `assets/characters/` | Lumpy and host-character art |
+| `server/` | Flask + Gemini chat-tutor backend |
+| `tests/` | Node test suite (run from the repo root) |
 
 ## Run locally
 
-Lumpia Lingo is a static web app; no build step or package installation is required.
+Lumpia Lingo is a static web app; no build step or package installation is required for lessons.
 
 ```bash
 python3 -m http.server 8000
@@ -69,6 +92,22 @@ Then open:
 
 ```text
 http://localhost:8000
+```
+
+The chat tutor needs the backend: see `server/README.md` for the Flask app and its deploy script.
+
+## Tests
+
+```bash
+node tests/lesson-music.test.cjs .
+node tests/srs-speaking.test.cjs .
+node tests/repro-stuck.cjs .
+node tests/crossword-direction.test.cjs .
+node tests/sound-effects.test.cjs .
+node tests/characters.test.cjs .
+node tests/continuous-thread-smoke.cjs review-conversations.js
+node tests/webpage-update.test.cjs webpage-update.js
+node tests/account-chat-v035.cjs .
 ```
 
 ## GitHub Pages
