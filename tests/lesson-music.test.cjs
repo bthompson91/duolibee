@@ -450,6 +450,42 @@ function musicState() {
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.10, 'turning music on must restore it during a lesson');
   assert.strictEqual(el.paused, false, 'turning music on must resume the track');
 
+  // ---- Music volume slider: scales every volume ----
+  // The slider is a 0–1 multiplier on all the lesson-music volumes.
+  // Full (100%) is the current level, so an unset setting (older saved
+  // progress) must behave exactly as before.
+  vm.runInContext('delete state.settings.musicVolume; window.duolibeeMusic.updateMusic()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.10, 'an unset music volume must default to full (0.10)');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.musicLevel', sandbox), 1, 'an unset music volume must report level 1');
+  // Half: normal 0.05, duck 0.02, mic dim 0.025.
+  vm.runInContext('window.duolibeeMusic.setMusicVolume(50)', sandbox);
+  assert.strictEqual(vm.runInContext('state.settings.musicVolume', sandbox), 0.5, 'setting the volume to 50 must save 0.5');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.musicLevel', sandbox), 0.5, 'the level must be 0.5 after setting 50');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.05, 'a 50% music volume must halve the normal volume to 0.05');
+  assert.strictEqual(el.volume, 0.05, 'the element volume must be halved too');
+  vm.runInContext('window.duolibeeSpeechStart()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.02, 'a 50% music volume must halve the duck to 0.02');
+  vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.05, 'speech end must restore the halved normal volume');
+  vm.runInContext('window.duolibeeMicStart()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.025, 'a 50% music volume must halve the mic dim to 0.025');
+  vm.runInContext('window.duolibeeMicEnd()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.05, 'mic end must restore the halved normal volume');
+  // Zero: silence, and the track pauses.
+  vm.runInContext('window.duolibeeMusic.setMusicVolume(0)', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0, 'a 0% music volume must silence the music');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.playing', sandbox), false, 'a 0% music volume must report not playing');
+  assert.strictEqual(el.paused, true, 'a 0% music volume must pause the track');
+  // Out-of-range values clamp instead of breaking.
+  vm.runInContext('state.settings.musicVolume = 1.5; window.duolibeeMusic.updateMusic()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.10, 'a music volume above 1 must clamp to full (0.10)');
+  vm.runInContext('state.settings.musicVolume = -0.5; window.duolibeeMusic.updateMusic()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0, 'a music volume below 0 must clamp to silent');
+  // Back to full for the rest of the test.
+  vm.runInContext('window.duolibeeMusic.setMusicVolume(100)', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.10, 'a 100% music volume must restore the full volume');
+  assert.strictEqual(el.paused, false, 'restoring the volume must resume the track');
+
   // Going home fades the music out over about a second and a half,
   // instead of cutting it off — then it pauses. (The lesson-end path
   // is the same as finishing a lesson.)
@@ -598,6 +634,24 @@ function musicState() {
   // ---- Settings preview: hear each character's track without a lesson ----
   vm.runInContext(`go('settings')`, sandbox);
   await sleep(50);
+  // The volume slider sits next to the music toggle: 0–100, step 5,
+  // defaulting to full, with a live percentage label. Dragging it saves
+  // the setting and updates the label without re-rendering Settings.
+  const volSlider = vm.runInContext(`document.getElementById('music-volume-slider')`, sandbox);
+  assert.ok(volSlider, 'a music volume slider must exist in Settings');
+  assert.strictEqual(volSlider.min, '0', 'the slider must go down to 0');
+  assert.strictEqual(volSlider.max, '100', 'the slider must go up to 100');
+  assert.strictEqual(volSlider.step, '5', 'the slider must step by 5');
+  assert.strictEqual(volSlider.value, '100', 'the slider must default to full (100)');
+  assert.strictEqual(vm.runInContext(`document.getElementById('music-volume-value').textContent`, sandbox), '100%', 'the slider label must read 100% at full');
+  volSlider.value = '50';
+  volSlider.oninput();
+  assert.strictEqual(vm.runInContext('state.settings.musicVolume', sandbox), 0.5, 'dragging the slider to 50 must save 0.5');
+  assert.strictEqual(vm.runInContext(`document.getElementById('music-volume-value').textContent`, sandbox), '50%', 'the slider label must read 50% after dragging');
+  volSlider.value = '100';
+  volSlider.oninput();
+  assert.strictEqual(vm.runInContext('state.settings.musicVolume', sandbox), 1, 'dragging the slider back to 100 must save 1');
+  assert.strictEqual(vm.runInContext(`document.getElementById('music-volume-value').textContent`, sandbox), '100%', 'the slider label must read 100% again');
   // The preview section lists all six characters with their track and
   // a play button. (The mock's getElementById always returns an
   // element, so assert on the built section's children instead.)
@@ -628,6 +682,14 @@ function musicState() {
   assert.strictEqual(musicEl().src, 'assets/music/lola-joli.mp3', 'a preview must load the track into the element');
   assert.strictEqual(musicEl().paused, false, 'a preview must play');
   assert.strictEqual(lolaBtn.textContent, '⏸ Stop', 'the playing row must show Stop');
+  // The preview volume scales with the slider too: half the slider,
+  // half the preview volume.
+  volSlider.value = '50';
+  volSlider.oninput();
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.05, 'a preview must play at half volume with the slider at 50%');
+  volSlider.value = '100';
+  volSlider.oninput();
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.10, 'restoring the slider must restore the preview volume');
   // Switching to another character switches the track, and the old
   // row goes back to Play.
   const bongBtn = vm.runInContext(`document.getElementById('music-preview-tito-bong')`, sandbox);

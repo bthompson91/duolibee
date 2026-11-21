@@ -19,6 +19,9 @@
 //     enough to know it is still playing. It never pauses for a
 //     recording: iOS may pause the track when the mic activates, and
 //     the tick starts it again.
+//   * A Settings volume slider (0–100%) scales every volume — normal,
+//     duck, mic dim, and preview. Full (100%) is the current level:
+//     the loudest the music ever gets.
 //   * Respects the global mute (the speaker icon) and has its own
 //     Settings toggle, on by default. Turning music off stops it at
 //     once; turning it on starts it again if a lesson is in progress.
@@ -125,6 +128,17 @@
   let timer = null;
 
   function musicOn() { return state.settings.music !== false; }
+  // The Settings volume slider, 0–1, as a multiplier on every
+  // lesson-music volume. Full (1.0) is the current level — NORMAL_VOLUME
+  // is the loudest the music ever gets. Unset (older saved progress)
+  // means full, so existing users keep the current behaviour.
+  function musicLevel() {
+    try {
+      const v = state && state.settings ? Number(state.settings.musicVolume) : NaN;
+      if (!Number.isFinite(v)) return 1;
+      return Math.min(1, Math.max(0, v));
+    } catch (_) { return 1; }
+  }
   function muted() { return !!(state.settings && state.settings.muted); }
   function lessonActive() {
     try {
@@ -164,16 +178,19 @@
   function targetVolume() {
     if (audioFailed) return 0;
     if (muted()) return 0;
+    // Every volume scales with the Settings volume slider: full is the
+    // current level, half is half of that, 0 is silent.
+    const level = musicLevel();
     // A preview is a deliberate listen: it plays at full volume even
     // if the lesson-music toggle is off. The toggle still controls
     // whether music plays during lessons.
-    if (previewHost) return NORMAL_VOLUME;
+    if (previewHost) return NORMAL_VOLUME * level;
     if (!musicOn() || !lessonActive()) return 0;
     // A recording dims the track to 5% and keeps it playing — it
     // never pauses for the microphone. A speaking exercise without a
     // recording still ducks to 0.04, as before.
-    if (recordingActive()) return MIC_VOLUME;
-    return shouldDuck() ? DUCK_VOLUME : NORMAL_VOLUME;
+    if (recordingActive()) return MIC_VOLUME * level;
+    return (shouldDuck() ? DUCK_VOLUME : NORMAL_VOLUME) * level;
   }
   // The volume the element is actually at right now. During a fade-out
   // that is the fade's current step; otherwise it is the target.
@@ -438,6 +455,17 @@
   }
   window.setMusicEnabled = setMusicEnabled;
 
+  // The Settings volume slider, 0–100. Stored as 0–1 in
+  // state.settings.musicVolume. Saves and applies at once, without
+  // re-rendering Settings, so dragging the slider is smooth.
+  function setMusicVolume(pct) {
+    const v = Number(pct);
+    state.settings.musicVolume = Number.isFinite(v) ? Math.min(100, Math.max(0, v)) / 100 : 1;
+    save();
+    applyVolume();
+  }
+  window.setMusicVolume = setMusicVolume;
+
   // Start/stop with the lesson, and re-check the volume on every render.
   const originalRenderExercise = renderExercise;
   renderExercise = function () {
@@ -489,11 +517,40 @@
       label.append(note);
       card.append(label);
     }
+    // Volume slider, right after the music toggle. Rebuilt on every
+    // Settings render (like the preview section below), so its position
+    // and percentage always match the saved setting.
+    const oldVol = document.getElementById('music-volume-setting');
+    if (oldVol && typeof oldVol.remove === 'function') oldVol.remove();
+    const volLabel = document.createElement('label');
+    volLabel.className = 'setting-row';
+    volLabel.id = 'music-volume-setting';
+    const volSlider = document.createElement('input');
+    volSlider.type = 'range';
+    volSlider.id = 'music-volume-slider';
+    volSlider.min = '0';
+    volSlider.max = '100';
+    volSlider.step = '5';
+    volSlider.value = String(Math.round(musicLevel() * 100));
+    const volPct = document.createElement('span');
+    volPct.id = 'music-volume-value';
+    volPct.textContent = Math.round(musicLevel() * 100) + '%';
+    volSlider.oninput = () => {
+      setMusicVolume(Number(volSlider.value));
+      volPct.textContent = Math.round(musicLevel() * 100) + '%';
+    };
+    volLabel.append(document.createTextNode(' Music volume '), volSlider, volPct);
+    const volNote = document.createElement('span');
+    volNote.className = 'setting-note';
+    volNote.textContent = 'Full is as loud as it gets — the music never plays louder than this.';
+    volLabel.append(volNote);
+    card.append(volLabel);
     buildPreviewSection(card);
   };
 
   window.duolibeeMusic = {
-    updateMusic, setMusicEnabled,
+    updateMusic, setMusicEnabled, setMusicVolume,
+    get musicLevel() { return musicLevel(); },
     get playing() { return !!audio && !audio.paused && currentVolume() > 0; },
     get volume() { return currentVolume(); },
     get gain() { return currentVolume(); },
