@@ -10,9 +10,15 @@
 //   * Starts when a lesson starts, stops when the lesson ends or the
 //     learner goes home. A lesson plays its host character's track;
 //     review and other host-less sessions fall back to Lumpy's track.
+//     When a lesson ends it fades out over about a second and a half
+//     instead of cutting off.
 //   * Ducks to almost silent on audio and speaking questions, and
 //     while a pronunciation clip or the system voice is playing, so
-//     the Tagalog is always clear.
+//     the Tagalog is always clear. While the microphone is recording
+//     it dims to 5% instead — quiet enough to hear yourself, loud
+//     enough to know it is still playing. It never pauses for a
+//     recording: iOS may pause the track when the mic activates, and
+//     the tick starts it again.
 //   * Respects the global mute (the speaker icon) and has its own
 //     Settings toggle, on by default. Turning music off stops it at
 //     once; turning it on starts it again if a lesson is in progress.
@@ -28,6 +34,15 @@
   // foreground. Ducking drops it to a whisper.
   const NORMAL_VOLUME = 0.25;
   const DUCK_VOLUME = 0.04;
+  // While the microphone is recording, the track dims to 5% — quiet
+  // enough to hear yourself, loud enough to know it is still playing.
+  // It never pauses for a recording.
+  const MIC_VOLUME = 0.05;
+  // Recordings cap at 8 s. A mic state older than this is stale (the
+  // stop event was lost) — clear it so the music comes back up.
+  const MIC_LEASE_MS = 12000;
+  // How long the track takes to fade out when a lesson ends.
+  const FADE_MS = 1500;
   // No pronunciation clip runs this long. If speech has been "playing"
   // for longer, the end event was lost (iOS often never fires the
   // utterance onend, and pausing a clip never fires onended) — clear it
@@ -79,6 +94,13 @@
   let audioFailed = false;
   let speechPlaying = false;
   let speechSince = 0; // when the current clip started (Date.now)
+  // True while the microphone is recording a speaking answer
+  // (speaking.js calls the mic hooks on start/stop).
+  let micActive = false;
+  let micSince = 0; // when the current recording started (Date.now)
+  // A fade-out in progress after a lesson ends, or null.
+  // { from, startedAt } — the volume it started from, and when.
+  let fade = null;
   // Set when an exercise is on screen, cleared when the learner
   // navigates away. session/index alone cannot tell "in a lesson"
   // from "went home mid-lesson", because go('home') leaves them set.
@@ -129,6 +151,16 @@
     const t = currentExerciseType();
     return t === 'audio' || t === 'speak';
   }
+  function recordingActive() {
+    // Safety net, like the speech lease: a lost mic-end event must
+    // not leave the music dimmed forever. Recordings cap at 8 s, so
+    // a mic state older than the lease is stale — clear it.
+    if (micActive && micSince && Date.now() - micSince > MIC_LEASE_MS) {
+      micActive = false;
+      micSince = 0;
+    }
+    return micActive;
+  }
   function targetVolume() {
     if (audioFailed) return 0;
     if (muted()) return 0;
@@ -137,7 +169,20 @@
     // whether music plays during lessons.
     if (previewHost) return NORMAL_VOLUME;
     if (!musicOn() || !lessonActive()) return 0;
+    // A recording dims the track to 5% and keeps it playing — it
+    // never pauses for the microphone. A speaking exercise without a
+    // recording still ducks to 0.04, as before.
+    if (recordingActive()) return MIC_VOLUME;
     return shouldDuck() ? DUCK_VOLUME : NORMAL_VOLUME;
+  }
+  // The volume the element is actually at right now. During a fade-out
+  // that is the fade's current step; otherwise it is the target.
+  function currentVolume() {
+    if (fade && !audioFailed) {
+      const p = Math.min(1, (Date.now() - fade.startedAt) / FADE_MS);
+      return fade.from * (1 - p);
+    }
+    return targetVolume();
   }
 
   function ensureAudio() {
@@ -163,6 +208,9 @@
   function loadTrack(host) {
     const a = ensureAudio();
     if (!a) return false;
+    // A new track means the fade is over — a lesson or a preview is
+    // starting, so cancel any fade-out in progress.
+    fade = null;
     const file = HOST_TRACK[host] || HOST_TRACK[DEFAULT_HOST];
     audioFailed = false;
     // Only reset the element when the track changes; restarting the
@@ -189,8 +237,36 @@
     }
   }
 
+  // Begin fading the track out over FADE_MS after a lesson ends,
+  // instead of cutting it off. The tick steps the fade; when it
+  // reaches 0 the element pauses, so it never sits playing silently.
+  // Starting a lesson or a preview cancels the fade (loadTrack).
+  function startFade() {
+    if (!audio || audio.paused || audioFailed) return;
+    if (fade) return;
+    fade = { from: audio.volume, startedAt: Date.now() };
+    ensureTimer();
+  }
+
   function applyVolume() {
     if (!audio) return;
+    // A fade-out in progress: the fade drives the volume itself on
+    // the tick, and the normal target must not cut it short.
+    if (fade && !audioFailed) {
+      const elapsed = Date.now() - fade.startedAt;
+      const p = Math.min(1, elapsed / FADE_MS);
+      const v = fade.from * (1 - p);
+      try { audio.volume = v; } catch (e) { /* ignore */ }
+      if (p >= 1) {
+        fade = null;
+        try { audio.volume = 0; } catch (e) { /* ignore */ }
+        try { if (!audio.paused) audio.pause(); } catch (e) { /* ignore */ }
+      }
+      // Keep the tick running until the fade finishes.
+      if (lessonActive() || previewHost || fade) ensureTimer(); else clearTimer();
+      return;
+    }
+    if (fade) fade = null; // a failed track aborts the fade
     const v = targetVolume();
     try {
       if (Math.abs(audio.volume - v) > 0.001) audio.volume = v;
@@ -295,11 +371,24 @@
 
   function updateMusic() {
     const active = lessonActive();
-    if (!active || !musicOn()) {
-      applyVolume();
+    if (!active) {
+      // The lesson just ended (or the learner went home): fade the
+      // track out over about a second and a half instead of cutting
+      // it off. A preview is not a lesson, so it never fades here.
+      if (wasInLesson && !previewHost) startFade();
       wasInLesson = false;
+      applyVolume();
       return;
     }
+    if (!musicOn()) {
+      // Turning music off stops it at once — no fade.
+      wasInLesson = false;
+      applyVolume();
+      return;
+    }
+    // A lesson is active: any fade is over — cancel it and play the
+    // lesson's track.
+    fade = null;
     // A lesson started: stop any preview so it cannot clash with the
     // lesson's own music.
     if (previewHost) stopPreview();
@@ -318,6 +407,15 @@
   // answer-speech.js calls these through its hook().
   window.duolibeeSpeechStart = function () { speechPlaying = true; speechSince = Date.now(); applyVolume(); };
   window.duolibeeSpeechEnd = function () { speechPlaying = false; speechSince = 0; applyVolume(); };
+
+  // The microphone is recording a speaking answer; speaking.js calls
+  // these when a recording starts and stops. While recording the
+  // track dims to 5% and keeps playing — it never pauses for the
+  // microphone. If iOS pauses the element when the mic activates,
+  // the tick starts it again (applyVolume plays whenever the target
+  // is above 0).
+  window.duolibeeMicStart = function () { micActive = true; micSince = Date.now(); applyVolume(); };
+  window.duolibeeMicEnd = function () { micActive = false; micSince = 0; applyVolume(); };
 
   function setMusicEnabled(on) {
     state.settings.music = !!on;
@@ -382,13 +480,17 @@
 
   window.duolibeeMusic = {
     updateMusic, setMusicEnabled,
-    get playing() { return !!audio && !audio.paused && targetVolume() > 0; },
-    get volume() { return targetVolume(); },
-    get gain() { return targetVolume(); },
+    get playing() { return !!audio && !audio.paused && currentVolume() > 0; },
+    get volume() { return currentVolume(); },
+    get gain() { return currentVolume(); },
     get track() { return loadedFile; },
     get host() { return currentHost; },
     get tracks() { return Object.values(HOST_TRACK); },
     get audio() { return audio; },
+    micStart: function () { window.duolibeeMicStart(); },
+    micEnd: function () { window.duolibeeMicEnd(); },
+    get recording() { return recordingActive(); },
+    get fading() { return fade !== null; },
     preview: previewFor,
     togglePreview,
     stopPreview,

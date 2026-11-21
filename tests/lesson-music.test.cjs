@@ -1,12 +1,14 @@
 // Lesson music test: each lesson plays its host character's track
 // (an MP3 in assets/music/), looped, and it ducks for listening /
 // speaking and while speech plays, respects mute and the Settings
-// toggle, and stops on home. A session with no host (review) falls
-// back to Lumpy's track. Settings also has a Character music preview:
-// each character's track can be heard without starting a lesson. If
-// a track fails to load, the lesson goes on silently. The <audio>
-// element is mocked so src, loop, volume and play/pause can be
-// asserted. Run from the repo root:
+// toggle, and fades out over ~1.5 s when a lesson ends instead of
+// cutting off. While the microphone is recording it dims to 5% and
+// keeps playing — it never pauses for a recording. A session with no
+// host (review) falls back to Lumpy's track. Settings also has a
+// Character music preview: each character's track can be heard
+// without starting a lesson. If a track fails to load, the lesson
+// goes on silently. The <audio> element is mocked so src, loop,
+// volume and play/pause can be asserted. Run from the repo root:
 // node <this file>
 const fs = require('fs');
 const vm = require('vm');
@@ -92,6 +94,20 @@ class MockAudio {
     if (type === 'error' && typeof this.onerror === 'function') { try { this.onerror({ type }); } catch (e) {} }
   }
 }
+// Mock MediaRecorder + getUserMedia, so the real startRecording /
+// stopRecording path can be driven without a microphone. The
+// recorder fires onstop when stop() is called; it never delivers
+// audio chunks, so finishRecording reports "nothing recorded".
+class MockMediaRecorder {
+  constructor(stream) {
+    this.stream = stream;
+    this.mimeType = 'audio/webm';
+    this.ondataavailable = null;
+    this.onstop = null;
+  }
+  start() {}
+  stop() { if (typeof this.onstop === 'function') this.onstop(); }
+}
 // Controllable clock: lesson-music.js uses Date.now() for the speech
 // lease, so the test can fast-forward past it.
 let mockNow = 1000000;
@@ -156,7 +172,10 @@ const sandbox = {
     removeItem(k) { delete this._s[k]; },
   },
   location: { href: 'https://bthompson91.github.io/duolibee/', origin: 'https://bthompson91.github.io' },
-  navigator: { onLine: true },
+  navigator: {
+    onLine: true,
+    mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) },
+  },
   speechSynthesis: undefined,
   SpeechRecognition: undefined,
   webkitSpeechRecognition: undefined,
@@ -168,6 +187,7 @@ const sandbox = {
   AudioContext: MockAudioContext,
   webkitAudioContext: MockAudioContext,
   Audio: MockAudio,
+  MediaRecorder: MockMediaRecorder,
   fetch: async (url) => {
     const u = String(url && url.url ? url.url : url);
     if (u.includes('lessons.json')) return { ok: true, status: 200, json: async () => lessonsData };
@@ -305,6 +325,58 @@ function musicState() {
   vm.runInContext('window.duolibeeSpeechEnd()', sandbox);
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'speech end must restore the music after the lease test');
 
+  // ---- Microphone recording: dim to 5%, never pause ----
+  // On a speaking exercise the music ducks to 0.04. While the
+  // learner is actually recording, speaking.js tells the music
+  // (duolibeeMicStart/End) and it dims to 0.05 instead — and it
+  // keeps playing. iOS may pause the element when the mic
+  // activates, so the tick must start it again. Drive the real
+  // recording path with the mocked microphone.
+  vm.runInContext(`
+    (function () {
+      const idx = session.exercises.findIndex((e) => e.type === 'speak');
+      index = idx; renderExercise();
+    })()
+  `, sandbox);
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'a speaking exercise must duck to 0.04 before recording');
+  vm.runInContext('window.duolibeeSpeaking.startRecording()', sandbox);
+  await sleep(200);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.recording', sandbox), true, 'recording must be reported while the mic is active');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.05, 'a recording must dim the music to 0.05, got ' + vm.runInContext('window.duolibeeMusic.volume', sandbox));
+  assert.strictEqual(el.paused, false, 'the track must keep playing while recording');
+  // iOS pauses the element when the mic activates: the tick must
+  // start it again while the recording is active.
+  el.paused = true;
+  vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
+  assert.strictEqual(el.paused, false, 'the tick must resume the track if iOS pauses it during a recording');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.05, 'the resumed track must still be at 0.05');
+  // Stopping the recording restores the exercise volume (ducked,
+  // since this is a speaking exercise) — not silence.
+  vm.runInContext('window.duolibeeSpeaking.stopRecording()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.recording', sandbox), false, 'recording must be reported off after the mic stops');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'stopping the recording must restore the ducked volume for a speaking exercise');
+  assert.strictEqual(el.paused, false, 'the track must keep playing after the recording stops');
+  // A lost mic-end event must not leave the music dimmed forever:
+  // recordings cap at 8 s, so a mic state older than the 12 s lease
+  // is stale.
+  vm.runInContext('window.duolibeeMicStart()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.05, 'a new recording must dim again');
+  mockNow += 13000;
+  vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'a stale mic state must clear after the lease so the music returns to the exercise volume');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.recording', sandbox), false, 'a stale mic state must report not recording');
+  // Back to a choice exercise, so the tests that follow see the
+  // normal half volume again.
+  vm.runInContext(`
+    (function () {
+      const idx = session.exercises.findIndex((e) => e.type === 'choice');
+      index = idx; renderExercise();
+    })()
+  `, sandbox);
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a choice exercise must restore half volume after the mic tests');
+
   // The global mute silences the music and pauses the track, and
   // unmuting resumes it.
   vm.runInContext('state.settings.muted = true; window.duolibeeMusic.updateMusic()', sandbox);
@@ -325,14 +397,85 @@ function musicState() {
   assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'turning music on must restore it during a lesson');
   assert.strictEqual(el.paused, false, 'turning music on must resume the track');
 
-  // Going home stops the music and pauses the track.
+  // Going home fades the music out over about a second and a half,
+  // instead of cutting it off — then it pauses. (The lesson-end path
+  // is the same as finishing a lesson.)
   vm.runInContext(`go('home')`, sandbox);
-  await sleep(150);
+  await sleep(50);
   const home = musicState();
-  console.log('home:', JSON.stringify(home));
-  assert.strictEqual(home.playing, false, 'music must stop on home');
-  assert.strictEqual(home.volume, 0, 'music volume must be 0 on home');
-  assert.strictEqual(el.paused, true, 'the track must pause on home');
+  console.log('home (fading):', JSON.stringify(home));
+  assert.strictEqual(home.playing, true, 'going home must keep the music playing while it fades');
+  assert.ok(home.volume > 0 && home.volume <= 0.25, 'going home must fade from the lesson volume, got ' + home.volume);
+  assert.strictEqual(el.paused, false, 'the track must keep playing while it fades');
+  // Fast-forward past the 1.5 s fade: it must reach 0 and pause.
+  mockNow += 2000;
+  vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
+  const homeDone = musicState();
+  console.log('home (faded):', JSON.stringify(homeDone));
+  assert.strictEqual(homeDone.volume, 0, 'the fade must reach 0');
+  assert.strictEqual(homeDone.playing, false, 'the fade must end with the music stopped');
+  assert.strictEqual(el.paused, true, 'the track must pause after the fade');
+  assert.strictEqual(el.volume, 0, 'the element volume must be 0 after the fade');
+
+  // ---- Lesson finish: fade out instead of cutting off ----
+  // Complete lesson 1 for real: settle and master every exercise,
+  // then walk next() to the end. The last exercise is a speaking
+  // one, so the music is ducked to 0.04 when the lesson ends — the
+  // fade starts from there, not from 0.
+  async function completeLesson(id) {
+    vm.runInContext('startLesson(' + id + ')', sandbox);
+    await sleep(150);
+    vm.runInContext(`
+      (function () {
+        session.exercises.forEach((ex) => { if (ex.type !== 'learn') session._mastered[ex._origin] = true; });
+      })()
+    `, sandbox);
+    for (let i = 0; i < 30; i++) {
+      vm.runInContext('session._settledIndex = index; next();', sandbox);
+      await sleep(20);
+      if (vm.runInContext('index >= session.exercises.length', sandbox)) break;
+    }
+    assert.strictEqual(vm.runInContext('index >= session.exercises.length', sandbox), true, 'the lesson must be complete after walking next()');
+  }
+  await completeLesson(1);
+  const finished = musicState();
+  console.log('lesson finished (fading):', JSON.stringify(finished));
+  assert.strictEqual(finished.volume, 0.04, 'finishing a lesson must not cut the music to 0 at once, got ' + finished.volume);
+  assert.strictEqual(finished.playing, true, 'the music must keep playing while it fades out');
+  assert.strictEqual(el.paused, false, 'the track must keep playing while it fades out');
+  // Halfway through the fade the volume must have dropped, but not
+  // reached 0.
+  mockNow += 500;
+  vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
+  const fadeMid = vm.runInContext('window.duolibeeMusic.volume', sandbox);
+  console.log('fade mid:', fadeMid);
+  assert.ok(fadeMid > 0 && fadeMid < 0.04, 'halfway through the fade the volume must have dropped but not reached 0, got ' + fadeMid);
+  assert.strictEqual(el.paused, false, 'the track must still be playing mid-fade');
+  // Starting a new lesson mid-fade cancels the fade and plays the new
+  // lesson's track at half volume.
+  vm.runInContext('startLesson(1)', sandbox);
+  await sleep(150);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'starting a lesson mid-fade must cancel the fade and restore half volume');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.track', sandbox), 'assets/music/lumpy.mp3', 'the new lesson must play its own host track');
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.fading', sandbox), false, 'the fade must be cancelled when a new lesson starts');
+  assert.strictEqual(el.paused, false, 'the new lesson must be playing');
+  // The cancelled fade must not come back: advancing time leaves the
+  // new lesson playing at half volume.
+  mockNow += 3000;
+  vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.25, 'a cancelled fade must not resume');
+  assert.strictEqual(el.paused, false, 'the new lesson must still be playing');
+  // Finish the lesson again and let the fade run to the end.
+  await completeLesson(1);
+  assert.strictEqual(vm.runInContext('window.duolibeeMusic.volume', sandbox), 0.04, 'finishing again must start a fade from the ducked volume');
+  mockNow += 2000;
+  vm.runInContext('window.duolibeeMusic.updateMusic()', sandbox);
+  const fadedOut = musicState();
+  console.log('lesson finished (faded):', JSON.stringify(fadedOut));
+  assert.strictEqual(fadedOut.volume, 0, 'the fade must reach 0');
+  assert.strictEqual(fadedOut.playing, false, 'the music must report stopped after the fade');
+  assert.strictEqual(el.paused, true, 'the track must pause after the fade');
+  assert.strictEqual(el.volume, 0, 'the element volume must be 0 after the fade');
 
   // Six tracks, one per character. A lesson plays its host
   // character's track, deterministically — no random pick.

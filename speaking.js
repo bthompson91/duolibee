@@ -230,6 +230,13 @@
   function stopTracks(stream) {
     try { (stream && stream.getTracks ? stream.getTracks() : []).forEach((tr) => { if (tr.stop) tr.stop(); }); } catch (e) { /* ignore */ }
   }
+  // Tell lesson-music.js the microphone is recording, so the track
+  // dims to 5% instead of pausing. Same pattern as answer-speech.js's
+  // hook(): the music hooks may not exist yet, so best-effort — never
+  // break recording.
+  function micHook(name) {
+    try { const f = window[name]; if (typeof f === 'function') f(); } catch (e) { /* ignore */ }
+  }
   async function startRecording() {
     const ex = session && session.exercises && session.exercises[index];
     if (!ex || ex.type !== 'speak' || session._answeredIndex === index) return;
@@ -266,6 +273,7 @@
     }
     setStatus('Recording… tap the microphone again to stop.');
     setMicLabel('⏹ Tap to stop');
+    micHook('duolibeeMicStart');
     recordTimer = setTimeout(() => { stopRecording(); }, 8000);
     watchSilence(stream);
   }
@@ -311,6 +319,7 @@
     if (recorder) {
       try { recorder.stop(); } catch (e) { recorder = null; }
     }
+    micHook('duolibeeMicEnd');
   }
   // The Settings toggle picks one transcription path for recordings:
   // on-device Whisper, or the cloud model. Never both at once.
