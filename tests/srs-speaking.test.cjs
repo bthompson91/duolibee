@@ -1039,6 +1039,40 @@ for (const f of order) {
   assert.strictEqual(par3After.heard, par3.nearMiss, 'the closer transcript should be shown when both are wrong');
   assert.strictEqual(par3After.type, 'speak', 'a non-empty transcript must keep the exercise');
 
+  // P. Fast path: when the server returns an accepted transcript, the
+  // parallel path must return it at once instead of waiting for the slow
+  // on-device Whisper (several seconds for whisper-base on a phone).
+  // Whisper is slow here (1 s) but the server is right, so the answer
+  // must arrive well before Whisper finishes.
+  const fetchBeforeFast = sandbox.fetch;
+  sandbox.fetch = async (url, options) => {
+    const u = String(url && url.url ? url.url : url);
+    if (u.includes('/transcribe')) return { ok: true, status: 200, json: async () => ({ transcript: sandbox.__serverTranscript || '' }) };
+    return fetchBeforeFast(url, options);
+  };
+  sandbox.__serverTranscript = 'Kumusta';
+  sandbox.__whisperTranscript = 'zzz wrong';
+  vm.runInContext(`
+    window.__whisperResolved = false;
+    window.duolibeeWhisper.transcribe = async () => {
+      await new Promise(r => setTimeout(r, 1000));
+      window.__whisperResolved = true;
+      return window.__whisperTranscript;
+    };
+  `, sandbox);
+  const fastStart = Date.now();
+  const fastText = await vm.runInContext(
+    `window.duolibeeSpeaking.transcribeInParallel(new Blob(['fake-audio'], { type: 'audio/mp4' }), { item: { t: 'Kumusta' } })`,
+    sandbox
+  );
+  const fastMs = Date.now() - fastStart;
+  const fastWhisperResolved = vm.runInContext(`window.__whisperResolved`, sandbox);
+  sandbox.fetch = fetchBeforeFast;
+  console.log('parallel fast path:', JSON.stringify({ text: fastText, ms: fastMs, whisperResolved: fastWhisperResolved }));
+  assert.strictEqual(fastText, 'Kumusta', 'the accepted server transcript must win at once');
+  assert.ok(fastMs < 500, 'the fast path must return well before slow Whisper finishes, took ' + fastMs + 'ms');
+  assert.strictEqual(fastWhisperResolved, false, 'the fast path must not wait for Whisper');
+
   // O. Silence detection: speech, then a second of quiet, stops the
   // recording early — well before the 8 s cap — and the clipped recording
   // is still transcribed.

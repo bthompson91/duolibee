@@ -377,16 +377,22 @@
       return '';
     }
   }
-  // Run the server and on-device Whisper at the same time, check both
-  // transcripts against the target, and keep the more correct one. An
-  // accepted transcript always beats an unaccepted one; among equals, the
-  // closer match wins. Returns '' when neither heard anything.
+  // Run the server and on-device Whisper at the same time, and keep the
+  // more correct transcript. An accepted transcript always beats an
+  // unaccepted one; among equals, the closer match wins. Returns '' when
+  // neither heard anything.
+  // Fast path: on-device Whisper is the slow leg on a phone (several
+  // seconds for whisper-base), so when the server already returns an
+  // accepted transcript, use it at once instead of waiting for Whisper
+  // to finish. Whisper still runs as the backup: if the server is wrong
+  // or silent, we wait for Whisper and keep the better of the two.
   async function transcribeInParallel(blob, ex) {
-    const results = await Promise.all([
-      transcribeOnServer(blob).catch(() => ''),
-      transcribeWithWhisper(blob).catch(() => ''),
-    ]);
-    const candidates = results.filter((t) => t);
+    const serverP = transcribeOnServer(blob).catch(() => '');
+    const whisperP = transcribeWithWhisper(blob).catch(() => '');
+    const serverText = await serverP;
+    if (serverText && speakAccepted(serverText, ex.item)) return serverText;
+    const whisperText = await whisperP;
+    const candidates = [serverText, whisperText].filter((t) => t);
     if (!candidates.length) return '';
     let best = candidates[0];
     let bestScore = speakSimilarity(best, ex.item.t);
