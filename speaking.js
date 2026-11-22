@@ -227,6 +227,10 @@
   let silenceTimer = null;
   let silenceCtx = null;
   let recordMime = '';
+  // _origin of the exercise being recorded, so finishRecording can tell a
+  // stale recording (started on an earlier speak question) from the current
+  // one. See finishRecording.
+  let recordOrigin = null;
   function stopTracks(stream) {
     try { (stream && stream.getTracks ? stream.getTracks() : []).forEach((tr) => { if (tr.stop) tr.stop(); }); } catch (e) { /* ignore */ }
   }
@@ -253,6 +257,7 @@
       return;
     }
     recordChunks = [];
+    recordOrigin = ex._origin;
     const rec = new MediaRecorder(stream);
     recorder = rec;
     recordMime = rec.mimeType || '';
@@ -329,6 +334,15 @@
   async function finishRecording() {
     const ex = session && session.exercises && session.exercises[index];
     if (!ex || ex.type !== 'speak' || session._answeredIndex === index) return;
+    // Stale-recording guard: if the learner swapped this speak question for
+    // a written one (or answered it) and moved on to another speak question
+    // while the recording was still in flight, this transcription belongs
+    // to the earlier question. Do not apply it — or its empty-transcription
+    // swap — to the new question. (Lesson 44 has adjacent speak pairs, so
+    // a stale result would otherwise land on the next speak question.)
+    const origin = recordOrigin;
+    recordOrigin = null;
+    if (typeof origin === 'number' && ex._origin !== origin) return;
     const chunks = recordChunks || [];
     recordChunks = null;
     if (!chunks.length) {
